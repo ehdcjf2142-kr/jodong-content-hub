@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>조동 컨텐츠 허브 — 결정 비교표</title>
+  <style>
+    :root {
+      --bg: #fafafa;
+      --surface: #fff;
+      --border: #e4e4e7;
+      --text: #18181b;
+      --muted: #71717a;
+      --accent: #7c3aed;
+      --accent-soft: #ede9fe;
+      --good: #059669;
+      --good-bg: #ecfdf5;
+      --warn: #d97706;
+      --warn-bg: #fffbeb;
+      --shadow: 0 1px 3px rgb(0 0 0 / 0.06);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #09090b;
+        --surface: #18181b;
+        --border: #3f3f46;
+        --text: #fafafa;
+        --muted: #a1a1aa;
+        --accent: #a78bfa;
+        --accent-soft: #2e1065;
+        --good: #34d399;
+        --good-bg: #064e3b33;
+        --warn: #fbbf24;
+        --warn-bg: #78350f33;
+        --shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+      }
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem 1rem 4rem;
+    }
+
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      margin-top: 0.5rem;
+      color: var(--muted);
+      font-size: 0.95rem;
+      max-width: 36rem;
+      margin-inline: auto;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+      margin-bottom: 2rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .dot {
+      width: 0.6rem;
+      height: 0.6rem;
+      border-radius: 50%;
+    }
+
+    .dot.easy { background: var(--good); }
+    .dot.mid { background: var(--warn); }
+    .dot.hard { background: #ef4444; }
+
+    /* ── Decision section ── */
+    .decision {
+      margin-bottom: 3rem;
+    }
+
+    .decision-header {
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
+      margin-bottom: 0.35rem;
+      flex-wrap: wrap;
+    }
+
+    .decision-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.75rem;
+      height: 1.75rem;
+      border-radius: 0.5rem;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .decision-header h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+
+    .decision-desc {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-bottom: 1rem;
+      padding-left: 2.5rem;
+    }
+
+    /* ── Grid of options ── */
+    .grid {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 0.85rem;
+      padding: 1.15rem 1.25rem;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+
+    .card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .card.recommended {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent), var(--shadow);
+    }
+
+    .card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .card-label {
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+
+    .badge {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .badge.rec { background: var(--accent-soft); color: var(--accent); }
+    .badge.easy { background: var(--good-bg); color: var(--good); }
+    .badge.mid { background: var(--warn-bg); color: var(--warn); }
+
+    .card-summary {
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .pros-cons {
+      display: grid;
+      gap: 0.5rem;
+      font-size: 0.82rem;
+      margin-top: auto;
+    }
+
+    .pros-cons div {
+      padding: 0.5rem 0.65rem;
+      border-radius: 0.5rem;
+    }
+
+    .pro { background: var(--good-bg); }
+    .con { background: var(--warn-bg); }
+
+    .pro strong, .con strong {
+      display: block;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.15rem;
+      opacity: 0.8;
+    }
+
+    .when {
+      font-size: 0.78rem;
+      color: var(--muted);
+      border-top: 1px dashed var(--border);
+      padding-top: 0.6rem;
+      margin-top: 0.25rem;
+    }
+
+    .when strong { color: var(--text); }
+
+    /* ── Quick pick section ── */
+    .quick-pick {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      margin-top: 1rem;
+    }
+
+    .quick-pick h3 {
+      font-size: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .pick-grid {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+
+    .pick-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+      font-size: 0.85rem;
+    }
+
+    .pick-item input {
+      margin-top: 0.25rem;
+      accent-color: var(--accent);
+      width: 1rem;
+      height: 1rem;
+      flex-shrink: 0;
+    }
+
+    .pick-item label { cursor: pointer; }
+    .pick-item .opt-id {
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .summary-box {
+      margin-top: 1.25rem;
+      padding: 1rem;
+      background: var(--accent-soft);
+      border-radius: 0.65rem;
+      font-size: 0.88rem;
+      min-height: 3rem;
+    }
+
+    .summary-box:empty::before {
+      content: "위에서 선택하면 여기에 내 조합이 정리됩니다.";
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 3rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    @media print {
+      .card:hover { transform: none; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>조동 컨텐츠 허브 — 결정 비교표</h1>
+      <p>
+        미완성 프로젝트를 마무리하기 위해 고를 수 있는 선택지들입니다.
+        카드를 나란히 비교하고, 맨 아래에서 내 조합을 체크해 보세요.
+      </p>
+    </header>
+
+    <div class="legend">
+      <span><span class="dot easy"></span> 쉬움 (비개발자 OK)</span>
+      <span><span class="dot mid"></span> 보통 (조금 도움 필요)</span>
+      <span><span class="dot hard"></span> 어려움 (개발 필요)</span>
+    </div>
+
+    <!-- ═══ 1. 검색 데이터 방식 ═══ -->
+    <section class="decision" id="d1">
+      <div class="decision-header">
+        <span class="decision-num">1</span>
+        <h2>아카이브 검색 — 데이터를 어떻게 불러올까?</h2>
+      </div>
+      <p class="decision-desc">
+        검색할 때 "목록"을 페이지에 실어 보낼지, 별도 파일(<code>search-index.json</code>)로 받을지 결정합니다.
+      </p>
+      <div class="grid">
+        <article class="card recommended">
+          <div class="card-top">
+            <span class="card-label">A. 지금처럼 페이지에 실어서</span>
+            <span class="badge rec">추천 (콘텐츠 적을 때)</span>
+          </div>
+          <p class="card-summary">아카이브 페이지가 데이터를 한 번에 들고 와서 바로 검색합니다.</p>
+          <div class="pros-cons">
+            <div class="pro"><strong>장점</strong> 구조가 단순하고, 지금 코드 그대로 쓸 수 있음</div>
+            <div class="con"><strong>단점</strong> 글이·영상이 수백 개 넘으면 페이지가 무거워질 수 있음</div>
+          </div>
+          <p class="when"><strong>이럴 때:</strong> 콘텐츠가 50개 미만이거나, 빨리 공개하고 싶을 때</p>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-label">B. JSON 파일로 따로 받기</span>
+            <span class="badge mid">보통</span>
+          </div>
+          <p class="card-summary"><code>/search-index.json</code> 파일을 내려받아 검색합니다. (이미 파일 생성 코드는 있음)</p>
+          <div class="pros-cons">
+            <div class="pro"><strong>장점</strong> 콘텐츠가 많아져도 페이지가 가벼움</div>
+            <div class="con"><strong>단점</strong> 검색 UI를 이 방식에 맞게 한 번 손봐야 함</div>
+          </div>
+          <p class="when"><strong>이럴 때:</strong> 앞으로 100개 이상 쌓일 예정일 때</p>
+        </article>
+
+        <article class="card recommended">
+          <div class="card-top">
+            <span class="card-label">C. 당장은 A, 나중에 B</span>
+            <span class="badge rec">추천 (절충)</span>
+          </div>
+          <p class="card-summary">지금은 간단하게 가다가, 콘텐츠가 늘면 B로 옮깁니다.</p>
+          <div class="pros-cons">
+            <div class="pro"><strong>장점</strong> 지금 할 일이 적고, 나중에 확장 가능</div>
+            <div class="con"><strong>단점</strong> 나중에 검색 쪽을 한 번 더 수정해야 함</div>
+          </div>
+          <p class="when"><strong>이럴 때:</strong> "일단 사이트부터 세상에 내보고 싶다" 할 때</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ═══ 2. 검색 결과 정렬 ═══ -->
+    <section class="decision" id="d2">
+      <div class="decision-header">
+        <span class="decision-num">2</span>
+        <h2>검색 결과 — 어떤 순서로 보여줄까?</h2>
+      </div>
+      <p class="decision-desc">
+        검색어와 "얼마나 비슷한지" 순 vs "최신 날짜" 순 중 무엇이 더 중요한지 정합니다.
+      </p>
+      <div class="grid">
+        <article class="card">
+          <div class="card-top">
+            <span class="card-label">A. 검색 잘 맞는 순</span>
+            <span class="badge easy">현재 방식</span>
+          </div>
+          <p class="card-summary">Fuse.js가 "비슷도 점수" 높은 것부터 보여 줍니다.</p>
+          <div class="pros-cons">
+            <div class="pro"><strong>장점</strong> 키워드 찾기에 효율적</div>
+            <div class="con"><strong>단점</strong> "최신 글부터 보고 싶다"와는 다를 수 있음</div>
+          </div>
+          <p class="when"><strong>이럴 때:</strong> "이 주제 관련 글 찾기"가 주 목적일 때</p>
+        </article>
+
+        <article class="card recommended">
+          <div class="card-top">
+            <span class="card-label">B. 최신 날짜순</span>
+            <span class="badge rec">추천</span>
+          </div>
+          <p class="card-summary">검색 결과를 날짜가 최근인 것부터 다시 정렬합니다.</p>
+          <div class="pros-cons">
+            <div class="pro"><strong>장점</strong> 아카이브 느낌 — "요즘 뭐 올렸지?"에 맞음</div>
+            <div class="con"><strong>단점</strong> 가장 관련 높은 글이 아래로 갈 수 있음</div>
+          </div>
+          <p class="when"><strong>이럴 때:</strong> 통합 홈페이지에서 "최근 활동" 훑기가 중요할 때</p>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-label">C. 버튼으로 둘 다</span>
+            <span class="badge mid">보통</span>
+          </div>
+          <p class="card-summary">"정확도순 / 날짜순" 토글 버튼을 둡니다.</p>
+          <div class="pros-cons">
+            <div class="pro"><strong>장점</strong> 방문자가 취향대로 고를 수 있음</div>
+            <div class="con"><strong>단점</strong> UI가 조금 더 복잡해짐</div>
+          </div>
+          <p class="when"><strong>이럴 때:</strong> 검색 + 타임라인 둘 다 중요할 때</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ═══ 3. 필터 ═══ -->
+    <section class="decision" id="d3">
+      <div class="decision-header">
+        <span class="decision-num">3</span>
+        <h2>아카이브 — 검색만? 필터 버튼도?</h2>
+      </div>
+      <p class="decision-desc">
+        플랫폼(유튜브·티스토리·네이버)이나 카테고리를 버튼으로 바로 고를 수 있게 할지 정합니다.
+      </p>
+      <div class="grid">
+        <article class="card">
+          <div class="card-top">
+            <span class="card-label">A. 검색만</span>
+            <span class="badge easy">가장 단순</span>
+          </div>
+          <p class="card-summary">지금처럼 검색창 + 전체 데이터 맵 테이블만 유지합니다.</p>
+          <div class="pros-cons">
+            <div class="pro"><strong>장점</strong> 만들기·유지하기 제일 쉬움</div>
+            <div class="con"><strong>단점</strong> "유튜브만 보기" 같은 건 검색어로 해야 함</div>
+          </div>
+          <p class="when"><strong>이럴 때:</strong> 콘텐츠가 아직 많지 않을 때</p>
+        </article>
+
+        <article class="card recommended">
+          <div class="card-top">
+            <span class="card-label">B. 최소 필터 2종</span>
+            <span class="badge rec">추천</span>
+          </div>
+          <p class="card-summary">플랫폼(YouTube / Tistory / Naver) + 유튜브 카테고리(3종) 버튼을 추가합니다.</p>
+          <div class="pros-cons">
+            <div class="pro"><strong>장점</strong> 체감이 크고, 구현 난이도는 적당함</div>
+            <div class="con"><strong>단점</strong> 태그별 세밀한 필터는 아직 없음</div>
+          </div>
+          <p class="when"><strong>이럴 때:</strong> "한눈에 분류해서 보기"가 목표일 때</p>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-label">C. 필터 + 태그 칩</span>
+            <span class="badge mid">보통</span>
+          </div>
+          <p class="card-summary">플랫폼·카테고리 + 태그(예: #시, #로그라이크)를 칩으로 클릭해 좁힙니다.</p>
+          <div class="pros-cons">
+            <div class="pro"><strong>장점</strong> 진짜 "내 도서관" 느낌</div>
+            <div class="con"><strong>단점</strong> UI·태그 관리가 더 필요함</div>
+          </div>
+          <p class="when"><strong>이럴 때:</strong> 태그를 꾸준히 달 계획이고, 콘텐츠가 많을 때</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ═══ 4. 콘텐츠 범위 ═══ -->
+    <section class="decision" id="d4">
+      <div class="decision-header">
+        <span class="decision-num">4</span>
+        <h2>"내 활동 전체" — 어디까지 넣을까?</h2>
+      </div>
+      <p class="decision-desc">
+        지금은 유튜브 + 블로그 링크만 있습니다. 개인 아카이브를 어떤 형태로 넣을지 정합니다.
+      </p>
+      <div class="grid">
+        <article class="card recommended">
+          <div class="card-top">
+            <span class="card-label">A. 링크 카드로 추가</span>
+            <span class="badge rec">추천 (쉬움)</span>
+          </div>
+          <p class="card-summary">새 JSON 파일에 제목·URL·날짜·태그만 넣어 카드로 보여 줍니다.</p>
+          <div class="pros-cons">
+            <div class="pro"><strong>장점</strong> 지금 구조와 똑같아서 확장이 쉬움</div>
+            <div class="con"><strong>단점</strong> 글 본문은 이 사이트에 안 보임 (외부 링크로 이동)</div>
+          </div>
+          <p class="when"><strong>이럴 때:</strong> 노션·구글독·외부 자료 링크를 모으고 싶을 때</p>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-label">B. 글 본문도 이 사이트에</span>
+            <span class="badge mid">보통</span>
+          </div>
+          <p class="card-summary">마크다운(.md) 파일로 글을 쓰고, 사이트 안에 전용 페이지를 만듭니다.</p>
+          <div class="pros-cons">
+            <div class="pro"><strong>장점</strong> 진짜 "내 홈페이지" — 글을 여기서 읽음</div>
+            <div class="con"><strong>단점</strong> 글 쓰는 방식·관리가 늘어남</div>
+          </div>
+          <p class="when"><strong>이럴 때:</strong> 블로그를 이 사이트로 옮기거나, 원문을 직접 호스팅하고 싶을 때</p>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-label">C. 지금 범위 고정, 나중에 확장</span>
+            <span class="badge easy">빠른 출시</span>
+          </div>
+          <p class="card-summary">유튜브 + 블로그 링크만으로 먼저 공개하고, 아카이브 확장은 다음 단계로 미룹니다.</p>
+          <div class="pros-cons">
+            <div class="pro"><strong>장점</strong> 할 일이 적어서 빨리 세상에 낼 수 있음</div>
+            <div class="con"><strong>단점</strong> "전체 활동" 통합은 아직 덜 됨</div>
+          </div>
+          <p class="when"><strong>이럴 때:</strong> 일단 MVP로 공개하고 피드백 받고 싶을 때</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ═══ 5. 업데이트 방식 ═══ -->
+    <section class="decision" id="d5">
+      <div class="decision-header">
+        <span class="decision-num">5</span>
+        <h2>콘텐츠 업데이트 — 손으로? 자동으로?</h2>
+      </div>
+      <p class="decision-desc">
+        유튜브 올리거나 블로그 쓸 때, 이 사이트 목록을 어떻게 갱신할지 정합니다.
+      </p>
+      <div class="grid">
+        <article class="card recommended">
+          <div class="card-top">
+            <span class="card-label">A. 수동 (JSON 파일에 직접 추가)</span>
+            <span class="badge rec">추천 (시작)</span>
+          </div>
+          <p class="card-summary">새 영상·글마다 <code>src/content/</code> 폴더에 JSON 파일을 하나 추가합니다.</p>
+          <div class="pros-cons">
+            <div class="pro"><strong>장점</strong> 가장 안전하고, 깨질 일이 적음</div>
+            <div class="con"><strong>단점</strong> 매번 손이 감 (에이전트/개발자 도움 받으면 쉬움)</div>
+          </div>
+          <p class="when"><strong>이럴 때:</strong> 비개발자로 시작할 때, 월 몇 건 수준일 때</p>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-label">B. 반자동 (RSS·알림 → 복붙)</span>
+            <span class="badge mid">보통</span>
+          </div>
+          <p class="card-summary">유튜브·블로그 RSS나 알림으로 정보를 받아, JSON에 복사·붙여넣기만 합니다.</p>
+          <div class="pros-cons">
+            <div class="pro"><strong>장점</strong> 제목·날짜·URL 입력이 줄어듦</div>
+            <div class="con"><strong>단점</strong> 그래도 사람이 확인·정리는 해야 함</div>
+          </div>
+          <p class="when"><strong>이럴 때:</strong> 업로드가 잦아지고, 수동이 부담될 때</p>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-label">C. 완전 자동 (API 연동)</span>
+            <span class="badge" style="background:#fee2e2;color:#dc2626;">어려움</span>
+          </div>
+          <p class="card-summary">YouTube Data API 등으로 채널·블로그를 자동 수집해 JSON을 생성합니다.</p>
+          <div class="pros-cons">
+            <div class="pro"><strong>장점</strong> 거의 손 안 대도 최신 목록 유지</div>
+            <div class="con"><strong>단점</strong> API 키, 서버, 오류 처리 등 개발 필요</div>
+          </div>
+          <p class="when"><strong>이럴 때:</strong> 콘텐츠가 매우 많고, 개발 지원이 있을 때</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ═══ 6. 배포·실데이터 ═══ -->
+    <section class="decision" id="d6">
+      <div class="decision-header">
+        <span class="decision-num">6</span>
+        <h2>공개 전 — 꼭 손봐야 할 것들</h2>
+      </div>
+      <p class="decision-desc">
+        기능 선택과 별개로, "진짜 사이트"로 쓰려면 아래 중 어디까지 할지도 정하면 좋습니다.
+      </p>
+      <div class="grid">
+        <article class="card">
+          <div class="card-top">
+            <span class="card-label">샘플 URL → 실제 링크로 교체</span>
+            <span class="badge easy">필수에 가까움</span>
+          </div>
+          <p class="card-summary">블로그 JSON에 <code>example.tistory.com</code> 같은 가짜 주소가 있습니다. 실제 글 URL로 바꿉니다.</p>
+          <p class="when"><strong>파일:</strong> <code>src/content/blog-links/*.json</code></p>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-label">도메인·SEO 설정</span>
+            <span class="badge mid">배포 시</span>
+          </div>
+          <p class="card-summary"><code>astro.config.mjs</code>의 site URL, <code>robots.txt</code>의 Sitemap 주소를 실제 Vercel/커스텀 도메인에 맞춥니다.</p>
+          <p class="when"><strong>시점:</strong> Vercel에 첫 배포 후</p>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-label">GitHub + Vercel 배포</span>
+            <span class="badge mid">한 번만</span>
+          </div>
+          <p class="card-summary">저장소 푸시 → Vercel 연결 → <code>npm run build</code> 성공 확인. README에 체크리스트가 있습니다.</p>
+          <p class="when"><strong>효과:</strong> 인터넷 주소로 누구나 접속 가능</p>
+        </article>
+
+        <article class="card">
+          <div class="card-top">
+            <span class="card-label">콘텐츠 양 늘리기</span>
+            <span class="badge easy">지속</span>
+          </div>
+          <p class="card-summary">지금 샘플은 영상 6개 + 블로그 4개. 실제 채널·블로그 글을 JSON으로 더 넣으면 "통합 허브" 느낌이 살아납니다.</p>
+          <p class="when"><strong>팁:</strong> 한 번에 다 안 넣어도 됨. 최근 10~20개부터</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ═══ Quick pick ═══ -->
+    <section class="quick-pick">
+      <h3>내 조합 고르기 (체크하면 아래에 정리됨)</h3>
+      <div class="pick-grid" id="picks">
+        <!-- filled by groups below -->
+      </div>
+      <div class="summary-box" id="summary" role="status" aria-live="polite"></div>
+    </section>
+
+    <footer>
+      조동 컨텐츠 허브 · decision-grid.html · 브라우저에서 이 파일을 더블클릭해 열면 됩니다.
+    </footer>
+  </div>
+
+  <script>
+    const groups = [
+      {
+        id: "d1",
+        title: "1. 검색 데이터",
+        options: [
+          { id: "1A", label: "A — 페이지에 실어서" },
+          { id: "1B", label: "B — JSON 파일로" },
+          { id: "1C", label: "C — 당장 A, 나중 B" },
+        ],
+      },
+      {
+        id: "d2",
+        title: "2. 결과 정렬",
+        options: [
+          { id: "2A", label: "A — 검색 맞는 순" },
+          { id: "2B", label: "B — 최신 날짜순" },
+          { id: "2C", label: "C — 둘 다 토글" },
+        ],
+      },
+      {
+        id: "d3",
+        title: "3. 필터",
+        options: [
+          { id: "3A", label: "A — 검색만" },
+          { id: "3B", label: "B — 최소 필터" },
+          { id: "3C", label: "C — 필터+태그" },
+        ],
+      },
+      {
+        id: "d4",
+        title: "4. 콘텐츠 범위",
+        options: [
+          { id: "4A", label: "A — 링크 카드" },
+          { id: "4B", label: "B — 글 본문도" },
+          { id: "4C", label: "C — 나중에 확장" },
+        ],
+      },
+      {
+        id: "d5",
+        title: "5. 업데이트",
+        options: [
+          { id: "5A", label: "A — 수동" },
+          { id: "5B", label: "B — 반자동" },
+          { id: "5C", label: "C — 완전 자동" },
+        ],
+      },
+    ];
+
+    const picksEl = document.getElementById("picks");
+    const summaryEl = document.getElementById("summary");
+    const STORAGE_KEY = "jodong-hub-decisions";
+
+    groups.forEach((g) => {
+      g.options.forEach((opt) => {
+        const div = document.createElement("div");
+        div.className = "pick-item";
+        div.innerHTML = `
+          <input type="radio" name="${g.id}" id="${opt.id}" value="${opt.label}" />
+          <label for="${opt.id}"><span class="opt-id">${g.title}</span><br />${opt.label}</label>
+        `;
+        picksEl.appendChild(div);
+      });
+    });
+
+    function updateSummary() {
+      const lines = [];
+      groups.forEach((g) => {
+        const checked = document.querySelector(`input[name="${g.id}"]:checked`);
+        if (checked) lines.push(`<strong>${g.title}:</strong> ${checked.value}`);
+      });
+      summaryEl.innerHTML = lines.length
+        ? "<strong>내가 고른 조합</strong><br><br>" + lines.join("<br>")
+        : "";
+      try {
+        const saved = {};
+        groups.forEach((g) => {
+          const c = document.querySelector(`input[name="${g.id}"]:checked`);
+          if (c) saved[g.id] = c.id;
+        });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+      } catch (_) {}
+    }
+
+    picksEl.addEventListener("change", updateSummary);
+
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      Object.entries(saved).forEach(([groupId, optId]) => {
+        const el = document.getElementById(optId);
+        if (el) el.checked = true;
+      });
+      updateSummary();
+    } catch (_) {}
+  </script>
+</body>
+</html>

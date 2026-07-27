@@ -1,0 +1,94 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import SectionHeading from '../../components/home/SectionHeading.astro';
+import YouTubeToc from '../../components/youtube/YouTubeToc.astro';
+import VideoCard from '../../components/youtube/VideoCard.astro';
+import ShortsPoemCard from '../../components/youtube/ShortsPoemCard.astro';
+import { getCollection } from 'astro:content';
+
+const entries = await getCollection('videos');
+const sortDesc = (
+	a: (typeof entries)[number],
+	b: (typeof entries)[number],
+) => b.data.publishedAt.getTime() - a.data.publishedAt.getTime();
+
+const gameAnalysis = entries.filter((e) => e.data.category === 'game-analysis').sort(sortDesc);
+const mobileReview = entries.filter((e) => e.data.category === 'mobile-review').sort(sortDesc);
+const visualPoem = entries.filter((e) => e.data.category === 'visual-poem').sort(sortDesc);
+---
+
+<BaseLayout
+	title="YouTube 인덱스 — 조동이형"
+	description="게임 분석, 모바일 리뷰, 자작시 쇼츠를 카테고리별로 모았습니다."
+>
+	<div class="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
+		<SectionHeading
+			title="YouTube Index"
+			subtitle="깊이 있는 분석부터 모바일 찍먹, 자작시 낭독 쇼츠까지 — 섹션으로 바로 이동할 수 있습니다."
+		/>
+		<YouTubeToc />
+		<section class="mt-14 space-y-16">
+			<div id="game-analysis">
+				<h3 class="mb-5 text-sm font-semibold tracking-[0.2em] text-violet-700 uppercase dark:text-violet-300">
+					Game Analysis
+				</h3>
+				<ul class="space-y-5">
+					{
+						gameAnalysis.map((e) => (
+							<li>
+								<VideoCard
+									title={e.data.title}
+									url={e.data.url}
+									thumbnailUrl={e.data.thumbnailUrl}
+									publishedAt={e.data.publishedAt}
+									tags={e.data.tags}
+									layout="horizontal"
+								/>
+							</li>
+						))
+					}
+				</ul>
+			</div>
+			<div id="mobile-review">
+				<h3 class="mb-5 text-sm font-semibold tracking-[0.2em] text-violet-700 uppercase dark:text-violet-300">
+					Mobile Review
+				</h3>
+				<ul class="grid gap-5 md:grid-cols-2">
+					{
+						mobileReview.map((e) => (
+							<li>
+								<VideoCard
+									title={e.data.title}
+									url={e.data.url}
+									thumbnailUrl={e.data.thumbnailUrl}
+									publishedAt={e.data.publishedAt}
+									tags={e.data.tags}
+									layout="compact"
+								/>
+							</li>
+						))
+					}
+				</ul>
+			</div>
+			<div id="visual-poem">
+				<h3 class="mb-5 text-sm font-semibold tracking-[0.2em] text-violet-700 uppercase dark:text-violet-300">
+					Visual Poem (Shorts)
+				</h3>
+				<ul class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+					{
+						visualPoem.map((e) => (
+							<li>
+								<ShortsPoemCard
+									title={e.data.title}
+									url={e.data.url}
+									thumbnailUrl={e.data.thumbnailUrl}
+									publishedAt={e.data.publishedAt}
+								/>
+							</li>
+						))
+					}
+				</ul>
+			</div>
+		</section>
+	</div>
+</BaseLayout>

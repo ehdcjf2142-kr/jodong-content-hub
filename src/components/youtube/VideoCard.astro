@@ -1,0 +1,62 @@
+---
+import { formatDate } from '../../lib/format';
+
+interface Props {
+	title: string;
+	url: string;
+	thumbnailUrl?: string;
+	publishedAt: Date;
+	tags: string[];
+	layout?: 'horizontal' | 'compact';
+}
+
+const { title, url, thumbnailUrl, publishedAt, tags, layout = 'horizontal' } = Astro.props;
+
+const isHorizontal = layout === 'horizontal';
+---
+
+<a
+	href={url}
+	target="_blank"
+	rel="noopener noreferrer"
+	class:list={[
+		'group flex overflow-hidden rounded-2xl border border-zinc-200/90 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300/80 hover:shadow-md dark:border-zinc-800/90 dark:bg-zinc-900/40 dark:hover:border-violet-500/40',
+		isHorizontal ? 'flex-col sm:flex-row' : 'flex-col',
+	]}
+>
+	<div
+		class:list={[
+			'relative shrink-0 overflow-hidden bg-zinc-100 dark:bg-zinc-800',
+			isHorizontal ? 'aspect-video w-full sm:aspect-auto sm:h-auto sm:w-52 sm:min-h-[8.5rem]' : 'aspect-video w-full',
+		]}
+	>
+		{
+			thumbnailUrl ? (
+				<img
+					src={thumbnailUrl}
+					alt=""
+					class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+					loading="lazy"
+					decoding="async"
+				/>
+			) : (
+				<div class="flex h-full min-h-32 items-center justify-center text-xs text-zinc-500">영상</div>
+			)
+		}
+	</div>
+	<div class="flex min-w-0 flex-1 flex-col justify-center gap-2 p-4 sm:p-5">
+		<p class="text-xs text-zinc-500 dark:text-zinc-500">{formatDate(publishedAt)}</p>
+		<h3 class="text-base font-semibold leading-snug text-zinc-900 dark:text-zinc-50">{title}</h3>
+		{
+			tags.length > 0 && (
+				<ul class="flex flex-wrap gap-1.5">
+					{tags.map((t) => (
+						<li class="rounded-md bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+							{t}
+						</li>
+					))}
+				</ul>
+			)
+		}
+	</div>
+</a>

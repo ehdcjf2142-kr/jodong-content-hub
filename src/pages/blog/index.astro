@@ -1,0 +1,78 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import SectionHeading from '../../components/home/SectionHeading.astro';
+import BlogLinkCard from '../../components/blog/BlogLinkCard.astro';
+import { getCollection } from 'astro:content';
+
+const entries = await getCollection('blogLinks');
+const sortDesc = (
+	a: (typeof entries)[number],
+	b: (typeof entries)[number],
+) => b.data.publishedAt.getTime() - a.data.publishedAt.getTime();
+
+const tistory = entries.filter((e) => e.data.platform === 'tistory').sort(sortDesc);
+const naver = entries.filter((e) => e.data.platform === 'naver').sort(sortDesc);
+---
+
+<BaseLayout
+	title="블로그 인덱스 — 조동이형"
+	description="티스토리 기술 로그와 네이버 감성 아카이브로 바로 이동합니다."
+>
+	<div class="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
+		<SectionHeading
+			title="Blog Index"
+			subtitle="Technical Log는 티스토리, Emotional Archive는 네이버 블로그 링크를 모았습니다."
+		/>
+		<div class="mt-10 grid gap-10 lg:grid-cols-2">
+			<section aria-labelledby="tistory-heading">
+				<h2
+					id="tistory-heading"
+					class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50"
+				>
+					Technical Log (Tistory)
+				</h2>
+				<p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+					개발 공부, 게임 상세 분석, 실험 로그를 모읍니다.
+				</p>
+				<ul class="mt-6 space-y-4">
+					{
+						tistory.map((e) => (
+							<li>
+								<BlogLinkCard
+									title={e.data.title}
+									url={e.data.url}
+									publishedAt={e.data.publishedAt}
+									tags={e.data.tags}
+									platform={e.data.platform}
+									summary={e.data.summary}
+								/>
+							</li>
+						))
+					}
+				</ul>
+			</section>
+			<section aria-labelledby="naver-heading">
+				<h2 id="naver-heading" class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+					Emotional Archive (Naver)
+				</h2>
+				<p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">일상 기록과 원문 창작을 모읍니다.</p>
+				<ul class="mt-6 space-y-4">
+					{
+						naver.map((e) => (
+							<li>
+								<BlogLinkCard
+									title={e.data.title}
+									url={e.data.url}
+									publishedAt={e.data.publishedAt}
+									tags={e.data.tags}
+									platform={e.data.platform}
+									summary={e.data.summary}
+								/>
+							</li>
+						))
+					}
+				</ul>
+			</section>
+		</div>
+	</div>
+</BaseLayout>

@@ -1,0 +1,24 @@
+---
+interface Props {
+	label: string;
+	variant?: 'youtube' | 'tistory' | 'naver' | 'neutral';
+}
+
+const { label, variant = 'neutral' } = Astro.props;
+
+const styles: Record<NonNullable<Props['variant']>, string> = {
+	youtube: 'bg-red-50 text-red-800 ring-red-100 dark:bg-red-950/50 dark:text-red-200 dark:ring-red-900/40',
+	tistory: 'bg-emerald-50 text-emerald-900 ring-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-100 dark:ring-emerald-900/40',
+	naver: 'bg-lime-50 text-lime-900 ring-lime-100 dark:bg-lime-950/30 dark:text-lime-100 dark:ring-lime-900/30',
+	neutral: 'bg-zinc-100 text-zinc-700 ring-zinc-200/80 dark:bg-zinc-800 dark:text-zinc-200 dark:ring-zinc-700/80',
+};
+---
+
+<span
+	class:list={[
+		'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase ring-1 ring-inset',
+		styles[variant],
+	]}
+>
+	{label}
+</span>

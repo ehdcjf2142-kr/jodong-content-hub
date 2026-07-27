@@ -1,0 +1,14 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Hero from '../components/home/Hero.astro';
+import LatestFeed from '../components/home/LatestFeed.astro';
+import { getAllFeedItems, takeLatest } from '../lib/content';
+
+const feed = await getAllFeedItems();
+const latest = takeLatest(feed, 9);
+---
+
+<BaseLayout>
+	<Hero />
+	<LatestFeed items={latest} />
+</BaseLayout>

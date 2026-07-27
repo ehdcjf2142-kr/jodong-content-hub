@@ -1,0 +1,71 @@
+---
+import type { FeedItem } from '../../lib/types';
+import { formatDate } from '../../lib/format';
+import Tag from '../ui/Tag.astro';
+
+interface Props {
+	items: FeedItem[];
+}
+
+const { items } = Astro.props;
+
+function badge(item: FeedItem): { label: string; variant: 'youtube' | 'tistory' | 'naver' } {
+	if (item.kind === 'youtube') return { label: 'YouTube', variant: 'youtube' };
+	if (item.platform === 'tistory') return { label: 'Tistory', variant: 'tistory' };
+	return { label: 'Naver', variant: 'naver' };
+}
+---
+
+<section class="mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-16">
+	<h2 class="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">최신 업데이트</h2>
+	<p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+		유튜브와 블로그에서 새로 올라온 항목을 시간순으로 모았습니다.
+	</p>
+	<ul class="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+		{
+			items.map((item) => {
+				const b = badge(item);
+				return (
+					<li>
+						<a
+							href={item.url}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="group flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-200/90 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300/80 hover:shadow-md dark:border-zinc-800/90 dark:bg-zinc-900/40 dark:hover:border-violet-500/40 dark:hover:shadow-lg dark:hover:shadow-violet-950/20"
+						>
+							<div class="relative aspect-video w-full overflow-hidden bg-zinc-100 dark:bg-zinc-800">
+								{item.thumbnailUrl ? (
+									<img
+										src={item.thumbnailUrl}
+										alt=""
+										class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+										loading="lazy"
+										decoding="async"
+									/>
+								) : (
+									<div class="flex h-full w-full items-center justify-center text-xs font-medium text-zinc-500 dark:text-zinc-400">
+										링크
+									</div>
+								)}
+								<div class="absolute left-3 top-3">
+									<Tag label={b.label} variant={b.variant} />
+								</div>
+							</div>
+							<div class="flex flex-1 flex-col gap-2 p-4">
+								<p class="text-xs text-zinc-500 dark:text-zinc-500">{formatDate(item.publishedAt)}</p>
+								<p class="line-clamp-2 text-sm font-semibold leading-snug text-zinc-900 dark:text-zinc-100">
+									{item.title}
+								</p>
+								{item.summary && (
+									<p class="line-clamp-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
+										{item.summary}
+									</p>
+								)}
+							</div>
+						</a>
+					</li>
+				);
+			})
+		}
+	</ul>
+</section>

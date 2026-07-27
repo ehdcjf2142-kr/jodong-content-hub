@@ -1,0 +1,79 @@
+---
+import { formatDate } from '../../lib/format';
+import type { FeedItem } from '../../lib/types';
+
+interface Props {
+	items: FeedItem[];
+}
+
+const { items } = Astro.props;
+
+function kindLabel(item: FeedItem): string {
+	if (item.kind === 'youtube') return 'YouTube';
+	if (item.platform === 'tistory') return 'Tistory';
+	return 'Naver';
+}
+---
+
+<div class="overflow-hidden rounded-2xl border border-zinc-200/90 bg-white dark:border-zinc-800/90 dark:bg-zinc-900/30">
+	<div class="hidden lg:block">
+		<table class="w-full text-left text-sm">
+			<thead class="border-b border-zinc-200 bg-zinc-50 text-xs font-semibold tracking-wide text-zinc-600 uppercase dark:border-zinc-800 dark:bg-zinc-900/80 dark:text-zinc-400">
+				<tr>
+					<th class="px-4 py-3">날짜</th>
+					<th class="px-4 py-3">플랫폼</th>
+					<th class="px-4 py-3">제목</th>
+					<th class="px-4 py-3">태그</th>
+				</tr>
+			</thead>
+			<tbody class="divide-y divide-zinc-100 dark:divide-zinc-800/80">
+				{
+					items.map((item) => (
+						<tr class="transition hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40">
+							<td class="whitespace-nowrap px-4 py-3 text-zinc-500 dark:text-zinc-500">
+								{formatDate(item.publishedAt)}
+							</td>
+							<td class="whitespace-nowrap px-4 py-3 font-medium text-zinc-700 dark:text-zinc-300">
+								{kindLabel(item)}
+							</td>
+							<td class="px-4 py-3">
+								<a
+									href={item.url}
+									target="_blank"
+									rel="noopener noreferrer"
+									class="font-medium text-violet-700 underline-offset-2 hover:underline dark:text-violet-300"
+								>
+									{item.title}
+								</a>
+							</td>
+							<td class="px-4 py-3 text-xs text-zinc-600 dark:text-zinc-400">{item.tags.join(', ')}</td>
+						</tr>
+					))
+				}
+			</tbody>
+		</table>
+	</div>
+	<ul class="divide-y divide-zinc-100 lg:hidden dark:divide-zinc-800/80">
+		{
+			items.map((item) => (
+				<li class="p-4">
+					<div class="flex items-center justify-between gap-2 text-xs text-zinc-500">
+						<span>{kindLabel(item)}</span>
+						<span>{formatDate(item.publishedAt)}</span>
+					</div>
+					<a
+						href={item.url}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="mt-2 block text-sm font-semibold text-zinc-900 dark:text-zinc-50"
+					>
+						{item.title}
+					</a>
+					{item.tags.length > 0 && (
+						<p class="mt-1 text-xs text-zinc-600 dark:text-zinc-400">{item.tags.join(' · ')}</p>
+					)}
+				</li>
+			))
+		}
+	</ul>
+</div>

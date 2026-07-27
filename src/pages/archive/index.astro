@@ -1,0 +1,37 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import SectionHeading from '../../components/home/SectionHeading.astro';
+import DataMapTable from '../../components/archive/DataMapTable.astro';
+import ArchiveSearch from '../../components/archive/ArchiveSearch';
+import { getAllFeedItems } from '../../lib/content';
+
+const items = await getAllFeedItems();
+---
+
+<BaseLayout
+	title="검색 · 아카이브 — 조동이형"
+	description="전체 콘텐츠를 키워드로 검색하고 데이터 맵 형태로 훑어보세요."
+>
+	<div class="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
+		<SectionHeading
+			title="Search & Archive"
+			subtitle="검색 UI는 빌드 시 생성된 /search-index.json 을 불러와 사용합니다."
+		/>
+		<div class="mt-10 grid gap-8 lg:grid-cols-5">
+			<div class="lg:col-span-2">
+				<ArchiveSearch client:load />
+			</div>
+			<div class="lg:col-span-3">
+				<h2 class="text-sm font-semibold tracking-wide text-zinc-800 uppercase dark:text-zinc-200">
+					Data map
+				</h2>
+				<p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+					전체 {items.length}건 · 날짜·플랫폼·제목·태그를 한눈에.
+				</p>
+				<div class="mt-4">
+					<DataMapTable items={items} />
+				</div>
+			</div>
+		</div>
+	</div>
+</BaseLayout>
