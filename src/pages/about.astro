@@ -1,0 +1,71 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import SectionHeading from '../components/home/SectionHeading.astro';
+
+const milestones: { year: string; title: string; body: string }[] = [
+	{
+		year: '20XX',
+		title: '패치 제목',
+		body: '이 자리에 전환점이 된 일을 한 줄로 적습니다.',
+	},
+	{
+		year: '20XX',
+		title: '패치 제목',
+		body: '이 자리에 전환점이 된 일을 한 줄로 적습니다.',
+	},
+	{
+		year: '20XX',
+		title: '패치 제목',
+		body: '이 자리에 전환점이 된 일을 한 줄로 적습니다.',
+	},
+];
+---
+
+<BaseLayout
+	title="About — 조동이형"
+	description="조동이형의 소개와 인생 패치노트."
+>
+	<div class="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
+		<SectionHeading
+			title="조동이형"
+			subtitle="게임으로 인생을 깨닫고 싶은 사람의 기록입니다."
+		/>
+		<div class="max-w-2xl space-y-4 text-base leading-relaxed text-zinc-700 dark:text-zinc-300">
+			<p>
+				조동이는 게임을 플레이하는 데서 멈추지 않고, 그 안에서 삶의 질문을 찾습니다. 분석이 필요한 판은 길게 풀어 보고, 스쳐 지나친 감정은 짧은 시와 일상 글로 남깁니다.
+			</p>
+			<p>
+				이 사이트는 그 기록의 대문입니다. 영상은 유튜브에, 기술 로그는 티스토리에, 감성과 창작은 네이버에 있고, 여기서는 새로 쌓인 것부터 골라 보여 줍니다.
+			</p>
+		</div>
+
+		<section class="mt-16" aria-labelledby="milestones-heading">
+			<h2
+				id="milestones-heading"
+				class="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50"
+			>
+				인생 패치노트
+			</h2>
+			<p class="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
+				Milestones. 연도, 제목, 한 줄만 채우면 됩니다.
+			</p>
+			<ol class="mt-8 space-y-0 border-l border-zinc-200 dark:border-zinc-800">
+				{
+					milestones.map((item) => (
+						<li class="relative pb-8 pl-6 last:pb-0">
+							<span
+								class="absolute top-1.5 -left-[5px] size-2.5 rounded-full bg-violet-500 ring-4 ring-zinc-50 dark:ring-zinc-950"
+								aria-hidden="true"
+							/>
+							<p class="text-xs font-semibold tracking-[0.18em] text-violet-700 uppercase dark:text-violet-300">
+								{item.year}
+							</p>
+							<h3 class="mt-1 text-base font-semibold text-zinc-900 dark:text-zinc-50">{item.title}</h3>
+							<p class="mt-1 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">{item.body}</p>
+						</li>
+					))
+				}
+			</ol>
+		</section>
+	</div>
+</BaseLayout>

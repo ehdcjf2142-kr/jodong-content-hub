@@ -1,14 +1,26 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Hero from '../components/home/Hero.astro';
-import LatestFeed from '../components/home/LatestFeed.astro';
+import LatestVideos from '../components/home/LatestVideos.astro';
+import LatestPosts from '../components/home/LatestPosts.astro';
 import { getAllFeedItems, takeLatest } from '../lib/content';
 
 const feed = await getAllFeedItems();
-const latest = takeLatest(feed, 9);
+const latestVideos = takeLatest(
+	feed.filter((item) => item.kind === 'youtube'),
+	6,
+);
+const latestPosts = takeLatest(
+	feed.filter((item) => item.kind === 'blog'),
+	6,
+);
 ---
 
-<BaseLayout>
+<BaseLayout
+	title="조동이형 — 기록소"
+	description="게임으로 인생을 깨닫고 싶은 조동이의 온갖 삽질과 사유의 기록소"
+>
 	<Hero />
-	<LatestFeed items={latest} />
+	<LatestVideos items={latestVideos} />
+	<LatestPosts items={latestPosts} />
 </BaseLayout>
