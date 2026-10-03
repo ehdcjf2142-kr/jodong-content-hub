@@ -4,15 +4,41 @@
  */
 
 import { XMLParser } from 'fast-xml-parser';
-import {
-	BLOG_DIR,
-	VIDEOS_DIR,
-	categorizeVideo,
-	extractTags,
-	loadIdentityIndex,
-	saveIfNew,
-	stripHtml,
-} from './sync-content.mjs';
+import * as sync from './sync-content.mjs';
+
+const { BLOG_DIR, VIDEOS_DIR, loadIdentityIndex, saveIfNew, stripHtml } = sync;
+
+function uniqueTags(values) {
+	if (typeof sync.uniqueTags === 'function') return sync.uniqueTags(values);
+	const tags = [];
+	const seen = new Set();
+	for (const value of values) {
+		const tag = String(value ?? '').replace(/\s+/g, ' ').trim();
+		if (!tag || seen.has(tag)) continue;
+		seen.add(tag);
+		tags.push(tag);
+	}
+	return tags;
+}
+
+function categorizeVideo(title, description = '') {
+	if (typeof sync.categorizeVideo === 'function') return sync.categorizeVideo(title, description);
+	const text = `${title} ${description}`.toLowerCase();
+	if (/쇼츠|시|poem|낭독|visual/.test(text)) return 'visual-poem';
+	if (/모바일|mobile|찍먹|gacha|리듬|터치/.test(text)) return 'mobile-review';
+	return 'game-analysis';
+}
+
+function videoEntry(id, micro) {
+	return {
+		title: micro.title,
+		url: `https://www.youtube.com/watch?v=${id}`,
+		thumbnailUrl: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+		publishedAt: new Date(micro.publishDate).toISOString(),
+		tags: micro.tags?.length ? micro.tags : (sync.extractTags?.(micro.title, micro.description ?? '') ?? []),
+		category: categorizeVideo(micro.title, micro.description ?? ''),
+	};
+}
 
 const UA = 'Mozilla/5.0 (compatible; jodong-content-hub/1.0)';
 const NAVER_BLOG_ID = 'gamelifeequation';
@@ -54,6 +80,7 @@ function rssText(value) {
 }
 
 async function backfillNaver(index) {
+	const tagIndex = sync.readBlogTagIndex ? await sync.readBlogTagIndex('naver') : null;
 	const countPerPage = 30;
 	let page = 1;
 	let total = Infinity;
@@ -81,7 +108,7 @@ async function backfillNaver(index) {
 				title,
 				url: `https://blog.naver.com/${NAVER_BLOG_ID}/${logNo}`,
 				publishedAt: parseNaverDate(post.addDate),
-				tags: extractTags(title),
+				tags: tagIndex?.get(logNo) ?? sync.extractTags?.(title) ?? [],
 				platform: 'naver',
 			};
 			if (await saveIfNew(BLOG_DIR, `naver-${logNo}.json`, entry, index)) added++;
@@ -122,6 +149,7 @@ async function backfillTistory(index) {
 			title,
 			publishedAt: publishedAt ? new Date(publishedAt).toISOString() : current.publishedAt,
 			summary,
+			tags: sync.blogTagsFromRssItem?.(item, 'tistory') ?? sync.extractTags?.(title, summary) ?? [],
 		});
 	}
 
@@ -150,7 +178,7 @@ async function backfillTistory(index) {
 			title: post.title,
 			url: post.url,
 			publishedAt: post.publishedAt,
-			tags: extractTags(post.title, post.summary ?? ''),
+			tags: post.tags ?? [],
 			platform: 'tistory',
 			...(post.summary ? { summary: post.summary.slice(0, 160) } : {}),
 		};
@@ -190,7 +218,11 @@ function extractYtInitialData(html) {
 }
 
 function continuationToken(item) {
-	return item.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token ?? null;
+	return (
+		item.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token ??
+		item.continuationItemViewModel?.continuationCommand?.innertubeCommand?.continuationCommand?.token ??
+		null
+	);
 }
 
 function findReelId(node, depth = 0) {
@@ -205,17 +237,18 @@ function findReelId(node, depth = 0) {
 
 function videoIdFromItem(item) {
 	const content = item.richItemRenderer?.content;
-	const lockup = content?.lockupViewModel;
-	if (lockup?.contentType === 'LOCKUP_CONTENT_TYPE_VIDEO' && lockup.contentId) return lockup.contentId;
-	const shortsId = findReelId(content?.shortsLockupViewModel);
+	const lockup = item.lockupViewModel ?? content?.lockupViewModel;
+	if (lockup?.contentId && lockup.contentType !== 'LOCKUP_CONTENT_TYPE_PLAYLIST') return lockup.contentId;
+	const shortsId = findReelId(item.shortsLockupViewModel ?? content?.shortsLockupViewModel);
 	if (shortsId) return shortsId;
 	return content?.videoRenderer?.videoId ?? content?.reelItemRenderer?.videoId ?? null;
 }
 
 function titleFromItem(item) {
 	const content = item.richItemRenderer?.content;
+	const lockup = item.lockupViewModel ?? content?.lockupViewModel;
 	return (
-		content?.lockupViewModel?.metadata?.lockupMetadataViewModel?.title?.content ??
+		lockup?.metadata?.lockupMetadataViewModel?.title?.content ??
 		content?.videoRenderer?.title?.runs?.[0]?.text ??
 		content?.videoRenderer?.title?.simpleText ??
 		''
@@ -245,21 +278,53 @@ async function ytBrowse(key, version, body) {
 	return res.json();
 }
 
-async function collectGrid(key, version, items, into) {
+async function collectGrid(key, version, items, into, label) {
 	const seenTokens = new Set();
 	let current = items;
-	for (let page = 0; page < 40 && current?.length; page++) {
+	let page = 0;
+	while (current?.length) {
+		page++;
 		let token = null;
 		for (const item of current) {
 			const id = videoIdFromItem(item);
 			if (id) into.set(id, titleFromItem(item) || into.get(id) || '');
 			token ??= continuationToken(item);
 		}
+		console.log(`  ${label} page ${page}: ${into.size} videos, continuation ${token ? 'yes' : 'no'}`);
 		if (!token || seenTokens.has(token)) break;
 		seenTokens.add(token);
 		const json = await ytBrowse(key, version, { continuation: token });
 		current = continuationItems(json);
 	}
+}
+
+function tabByTitle(tabs, titles) {
+	return tabs.find((tab) => titles.includes(tab.tabRenderer?.title));
+}
+
+async function collectBrowseTab(key, version, tab, into, label) {
+	const endpoint = tab?.tabRenderer?.endpoint?.browseEndpoint;
+	if (!endpoint?.browseId) return;
+	const json = await ytBrowse(key, version, {
+		browseId: endpoint.browseId,
+		params: endpoint.params,
+	});
+	const selected = (json.contents?.twoColumnBrowseResultsRenderer?.tabs ?? []).find(
+		(item) => item.tabRenderer?.content?.richGridRenderer,
+	);
+	await collectGrid(key, version, selected?.tabRenderer?.content?.richGridRenderer?.contents ?? [], into, label);
+}
+
+function playlistItems(data) {
+	const tabs = data?.contents?.twoColumnBrowseResultsRenderer?.tabs ?? [];
+	for (const tab of tabs) {
+		const sections = tab.tabRenderer?.content?.sectionListRenderer?.contents ?? [];
+		for (const section of sections) {
+			const items = section.itemSectionRenderer?.contents;
+			if (Array.isArray(items) && items.length) return items;
+		}
+	}
+	return [];
 }
 
 async function fetchPlayer(key, version, videoId) {
@@ -277,7 +342,14 @@ async function fetchPlayer(key, version, videoId) {
 		if (!res.ok) continue;
 		const json = await res.json();
 		const micro = json.microformat?.playerMicroformatRenderer;
-		if (micro?.publishDate && micro?.title?.simpleText) return micro;
+		if (micro?.publishDate && micro?.title?.simpleText) {
+			return {
+				title: micro.title.simpleText,
+				description: micro.description?.simpleText ?? '',
+				publishDate: micro.publishDate,
+				tags: uniqueTags(json.videoDetails?.keywords ?? []),
+			};
+		}
 	}
 	return null;
 }
@@ -292,31 +364,34 @@ async function backfillYouTube(index) {
 	if (!key || !version || !data) throw new Error('Could not read the YouTube channel page');
 
 	const tabs = data.contents?.twoColumnBrowseResultsRenderer?.tabs ?? [];
-	const videosTab = tabs.find((tab) => tab.tabRenderer?.title === '동영상' || tab.tabRenderer?.title === 'Videos');
-	const shortsTab = tabs.find((tab) => tab.tabRenderer?.title === 'Shorts');
+	const videosTab = tabByTitle(tabs, ['동영상', 'Videos']);
+	const shortsTab = tabByTitle(tabs, ['Shorts']);
+	const liveTab = tabByTitle(tabs, ['라이브', 'Live', 'Streams']);
 	const videos = new Map();
 
-	await collectGrid(key, version, videosTab?.tabRenderer?.content?.richGridRenderer?.contents ?? [], videos);
+	await collectGrid(
+		key,
+		version,
+		videosTab?.tabRenderer?.content?.richGridRenderer?.contents ?? [],
+		videos,
+		'videos',
+	);
+	await collectBrowseTab(key, version, liveTab, videos, 'live');
+	await collectBrowseTab(key, version, shortsTab, videos, 'shorts');
 
-	const shortsEndpoint = shortsTab?.tabRenderer?.endpoint?.browseEndpoint;
-	if (shortsEndpoint?.browseId) {
-		const shortsJson = await ytBrowse(key, version, {
-			browseId: shortsEndpoint.browseId,
-			params: shortsEndpoint.params,
+	const channelId = videosTab?.tabRenderer?.endpoint?.browseEndpoint?.browseId;
+	if (channelId?.startsWith('UC')) {
+		const playlistHtml = await fetchText(`https://www.youtube.com/playlist?list=UU${channelId.slice(2)}`, {
+			'Accept-Language': 'ko-KR,ko;q=0.9',
 		});
-		const shortsTabs = shortsJson.contents?.twoColumnBrowseResultsRenderer?.tabs ?? [];
-		const selected = shortsTabs.find((tab) => tab.tabRenderer?.content?.richGridRenderer);
-		await collectGrid(
-			key,
-			version,
-			selected?.tabRenderer?.content?.richGridRenderer?.contents ?? [],
-			videos,
-		);
+		const playlistKey = playlistHtml.match(/"INNERTUBE_API_KEY":"([^"]+)"/)?.[1] ?? key;
+		const playlistVersion = playlistHtml.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/)?.[1] ?? version;
+		const playlistData = extractYtInitialData(playlistHtml);
+		await collectGrid(playlistKey, playlistVersion, playlistItems(playlistData), videos, 'uploads');
 	}
 
-	console.log(`YouTube list: ${videos.size} videos. Fetching publish dates…`);
-
-	const ids = [...videos.keys()];
+	const ids = [...videos.keys()].filter((id) => !index.has(`yt-${id}.json`));
+	console.log(`YouTube list: ${videos.size} videos. Fetching publish dates for ${ids.length} new…`);
 	const failed = [];
 	let added = 0;
 	let done = 0;
@@ -332,17 +407,7 @@ async function backfillYouTube(index) {
 				failed.push(id);
 				continue;
 			}
-			const title = micro.title.simpleText;
-			const description = micro.description?.simpleText ?? '';
-			const entry = {
-				title,
-				url: `https://www.youtube.com/watch?v=${id}`,
-				thumbnailUrl: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
-				publishedAt: new Date(micro.publishDate).toISOString(),
-				tags: extractTags(title, description),
-				category: categorizeVideo(title, description),
-			};
-			if (await saveIfNew(VIDEOS_DIR, `yt-${id}.json`, entry, index)) added++;
+			if (await saveIfNew(VIDEOS_DIR, `yt-${id}.json`, videoEntry(id, micro), index)) added++;
 			if (done % 25 === 0 || done === ids.length) console.log(`  dates ${done}/${ids.length}`);
 		}
 	}
@@ -359,17 +424,7 @@ async function backfillYouTube(index) {
 				stillFailed.push(id);
 				continue;
 			}
-			const title = micro.title.simpleText;
-			const description = micro.description?.simpleText ?? '';
-			const entry = {
-				title,
-				url: `https://www.youtube.com/watch?v=${id}`,
-				thumbnailUrl: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
-				publishedAt: new Date(micro.publishDate).toISOString(),
-				tags: extractTags(title, description),
-				category: categorizeVideo(title, description),
-			};
-			if (await saveIfNew(VIDEOS_DIR, `yt-${id}.json`, entry, index)) added++;
+			if (await saveIfNew(VIDEOS_DIR, `yt-${id}.json`, videoEntry(id, micro), index)) added++;
 		}
 		if (stillFailed.length) {
 			throw new Error(`Missing publish dates for ${stillFailed.length} videos: ${stillFailed.join(', ')}`);
@@ -381,14 +436,15 @@ async function backfillYouTube(index) {
 }
 
 async function main() {
+	const only = process.argv[2];
 	console.log('Backfilling archives…');
 	const blogs = await loadIdentityIndex(BLOG_DIR);
 	const videos = await loadIdentityIndex(VIDEOS_DIR);
-	const naver = await backfillNaver(blogs);
-	const tistory = await backfillTistory(blogs);
-	const youtube = await backfillYouTube(videos);
+	const naver = !only || only === 'naver' ? await backfillNaver(blogs) : null;
+	const tistory = !only || only === 'tistory' ? await backfillTistory(blogs) : null;
+	const youtube = !only || only === 'youtube' ? await backfillYouTube(videos) : null;
 	console.log(
-		`Done. Naver ${naver.listed}, Tistory ${tistory.listed}, YouTube ${youtube.listed}. New files: blogs ${naver.added + tistory.added}, videos ${youtube.added}.`,
+		`Done. Naver ${naver?.listed ?? 'skipped'}, Tistory ${tistory?.listed ?? 'skipped'}, YouTube ${youtube?.listed ?? 'skipped'}. New files: blogs ${(naver?.added ?? 0) + (tistory?.added ?? 0)}, videos ${youtube?.added ?? 0}.`,
 	);
 }
 
