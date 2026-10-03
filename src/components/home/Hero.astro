@@ -1,3 +1,16 @@
+---
+type Piece = string | { accent: string };
+
+const lines: Piece[][] = [
+	['게임으로 인생을 깨닫고 싶은 ', { accent: '조동이형' }],
+	['온갖 삽질과, ', { accent: '사유의 기록소' }],
+	['게임을 하면서 인생을 생각하고, 그 과정을 ', { accent: '영상과 글' }, '로 남겼습니다.'],
+	[{ accent: '유튜브' }, '에는 ', { accent: '분석, 리뷰' }, '들이 올라갑니다.'],
+	[{ accent: '네이버 블로그' }, '에는 저의 ', { accent: '일상, 창작글, 자작시' }, ' 등이 올라갑니다.'],
+	[{ accent: '티스토리' }, '에는 약간은 ', { accent: '전문적인 글' }, '들을 연재할 생각이 있습니다.'],
+];
+---
+
 <section class="relative overflow-hidden border-b border-zinc-200/80 bg-gradient-to-b from-violet-50/80 to-zinc-50 dark:border-zinc-800/80 dark:from-violet-950/40 dark:to-zinc-950">
 	<div
 		class="pointer-events-none absolute inset-0 opacity-40 dark:opacity-25"
@@ -10,11 +23,31 @@
 			Jo-dong-ee-hyung
 		</p>
 		<h1 class="mt-4 max-w-3xl font-serif text-3xl leading-tight font-medium tracking-tight text-zinc-900 sm:text-4xl lg:text-5xl dark:text-zinc-50">
-			게임으로 인생을 깨닫고 싶은 조동이의 온갖 삽질과 사유의 기록소
+			조동이형의 기록 창고
 		</h1>
-		<p class="mt-5 max-w-2xl text-base leading-relaxed text-zinc-600 sm:text-lg dark:text-zinc-400">
-			게임을 하면서 인생을 생각하고, 그 과정을 영상과 글로 남깁니다. 유튜브의 분석·리뷰·자작시, 티스토리의 기술 로그, 네이버의 일상과 창작이 이 기록소에 모입니다.
-		</p>
+		<ul class="mt-6 max-w-2xl space-y-3 text-base leading-relaxed sm:text-lg">
+			{
+				lines.map((pieces, index) => (
+					<li
+						class="hero-intro-line flex items-baseline gap-2.5 text-zinc-800 dark:text-zinc-100"
+						style={`--i: ${index}`}
+					>
+						<span class="shrink-0 font-medium text-violet-600 dark:text-violet-300" aria-hidden="true">
+							-
+						</span>
+						<span>
+							{pieces.map((piece) =>
+								typeof piece === 'string' ? (
+									piece
+								) : (
+									<span class="font-semibold text-violet-800 dark:text-violet-200">{piece.accent}</span>
+								),
+							)}
+						</span>
+					</li>
+				))
+			}
+		</ul>
 		<ul class="mt-10 flex flex-wrap gap-3">
 			<li>
 				<a
@@ -59,3 +92,31 @@
 		</ul>
 	</div>
 </section>
+
+<style>
+	.hero-intro-line {
+		opacity: 0;
+		animation: hero-intro-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+		animation-delay: calc(0.2s + var(--i) * 0.34s);
+	}
+
+	@keyframes hero-intro-in {
+		from {
+			opacity: 0;
+			transform: translateY(0.55rem);
+		}
+
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.hero-intro-line {
+			opacity: 1;
+			animation: none;
+			transform: none;
+		}
+	}
+</style>

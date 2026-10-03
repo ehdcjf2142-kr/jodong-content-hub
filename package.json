@@ -10,7 +10,8 @@
     "build": "node scripts/sync-content.mjs && astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "sync:content": "node scripts/sync-content.mjs"
+    "sync:content": "node scripts/sync-content.mjs",
+    "refresh:tags": "node scripts/refresh-tags.mjs"
   },
   "dependencies": {
     "@astrojs/react": "^5.0.4",
@@ -21,7 +22,6 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "astro": "^6.3.1",
-    "fuse.js": "^7.3.0",
     "lucide-react": "^1.14.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

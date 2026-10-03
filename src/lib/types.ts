@@ -8,12 +8,11 @@ export interface FeedItem {
 	publishedAt: Date;
 	tags: string[];
 	thumbnailUrl?: string;
-	category?: 'game-analysis' | 'mobile-review' | 'visual-poem';
 	platform?: 'tistory' | 'naver';
 	summary?: string;
 }
 
 export type SearchIndexRow = Pick<
 	FeedItem,
-	'id' | 'kind' | 'title' | 'url' | 'tags' | 'thumbnailUrl' | 'category' | 'platform' | 'summary'
+	'id' | 'kind' | 'title' | 'url' | 'tags' | 'thumbnailUrl' | 'platform' | 'summary'
 > & { publishedAt: string };

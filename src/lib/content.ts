@@ -15,7 +15,6 @@ export async function getAllFeedItems(): Promise<FeedItem[]> {
 		publishedAt: e.data.publishedAt,
 		tags: e.data.tags,
 		thumbnailUrl: e.data.thumbnailUrl,
-		category: e.data.category,
 	}));
 
 	const blogs: FeedItem[] = blogEntries.map((e) => ({

@@ -6,7 +6,7 @@ Astro 정적 사이트로 유튜브·티스토리·네이버 블로그 링크를
 
 - Astro 6 (정적 출력)
 - Tailwind CSS v4 (`@tailwindcss/vite`)
-- React islands (테마 토글, 아카이브 검색 + `fuse.js`, `lucide-react`)
+- React islands (테마 토글, 아카이브 검색, `lucide-react`)
 - Content Collections (`src/content/videos`, `src/content/blog-links`)
 - `@astrojs/sitemap`
 
@@ -39,7 +39,6 @@ npm run preview
 | `thumbnailUrl` | string (URL), 선택 | 썸네일 (예: `https://i.ytimg.com/vi/VIDEO_ID/hqdefault.jpg`) |
 | `publishedAt` | ISO 8601 문자열 | 공개 일시 |
 | `tags` | string[] | 태그 |
-| `category` | `"game-analysis"` \| `"mobile-review"` \| `"visual-poem"` | 인덱스 섹션 분류 |
 
 ### 블로그 링크
 
@@ -73,8 +72,6 @@ npm run build
 | YouTube `@JodongBroOfficial` | YouTube Data API (`YOUTUBE_API_KEY` 있으면) 또는 **RSS fallback** (키 없어도 동작) |
 | Tistory `jodongbro.tistory.com` | RSS |
 | Naver `blog.naver.com/gamelifeequation` | RSS |
-
-유튜브 `category`는 제목·설명 키워드로 자동 분류됩니다. 잘못 분류되면 해당 JSON의 `category`만 수동 수정하면 됩니다.
 
 GitHub Actions (`.github/workflows/sync-content.yml`)으로 매일 자동 sync → 커밋 → Vercel 재배포가 가능합니다. 저장소 Secrets에 `YOUTUBE_API_KEY`를 등록하세요.
 

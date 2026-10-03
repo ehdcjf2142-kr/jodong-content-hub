@@ -26,8 +26,9 @@ const YOUTUBE_CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID;
 const MAX_VIDEOS = Number.parseInt(process.env.SYNC_MAX_VIDEOS || '20', 10);
 const MAX_BLOG = Number.parseInt(process.env.SYNC_MAX_BLOG || '10', 10);
 
-const TISTORY_RSS = 'https://jodongbro.tistory.com/rss';
-const NAVER_RSS = 'https://rss.blog.naver.com/gamelifeequation.xml';
+const UA = 'Mozilla/5.0 (compatible; jodong-content-hub/1.0)';
+export const TISTORY_RSS = 'https://jodongbro.tistory.com/rss';
+export const NAVER_RSS = 'https://rss.blog.naver.com/gamelifeequation.xml';
 
 const xmlParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
 
@@ -49,28 +50,91 @@ export function stripHtml(html) {
 		.trim();
 }
 
-export function categorizeVideo(title, description = '') {
-	const text = `${title} ${description}`.toLowerCase();
-	if (/쇼츠|시|poem|낭독|visual/.test(text)) return 'visual-poem';
-	if (/모바일|mobile|찍먹|gacha|리듬|터치/.test(text)) return 'mobile-review';
-	return 'game-analysis';
+export function uniqueTags(values) {
+	const tags = [];
+	const seen = new Set();
+	for (const value of values) {
+		const tag = String(value ?? '').replace(/\s+/g, ' ').trim();
+		if (!tag || seen.has(tag)) continue;
+		seen.add(tag);
+		tags.push(tag);
+	}
+	return tags;
 }
 
-export function extractTags(title, description = '') {
-	const text = `${title} ${description}`;
-	const tags = new Set();
-	const rules = [
-		[/쇼츠|shorts/i, '쇼츠'],
-		[/시|poem/i, '시'],
-		[/모바일|mobile/i, '모바일'],
-		[/로그라이크|roguelike/i, '로그라이크'],
-		[/분석|analysis|lore/i, '분석'],
-		[/게임|game/i, '게임'],
-	];
-	for (const [re, tag] of rules) {
-		if (re.test(text)) tags.add(tag);
+function rssText(value) {
+	if (value == null) return '';
+	if (typeof value === 'string' || typeof value === 'number') return String(value);
+	return String(value['#text'] ?? '');
+}
+
+export function blogTagsFromRssItem(item, platform) {
+	if (platform === 'naver') return uniqueTags(rssText(item.tag).split(','));
+	const category = item.category;
+	const list = Array.isArray(category) ? category : category == null ? [] : [category];
+	return uniqueTags(list.map((entry) => rssText(entry)));
+}
+
+let youtubeClientPromise;
+
+function youtubeInnertubeClient() {
+	if (!youtubeClientPromise) {
+		youtubeClientPromise = (async () => {
+			const res = await fetch(`https://www.youtube.com/@${YOUTUBE_HANDLE}/videos`, {
+				headers: { 'User-Agent': UA },
+			});
+			if (!res.ok) throw new Error(`Cannot load YouTube channel page (${res.status})`);
+			const html = await res.text();
+			const key = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/)?.[1];
+			const version = html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/)?.[1];
+			if (!key || !version) throw new Error('Could not read the YouTube client');
+			return { key, version };
+		})();
 	}
-	return [...tags].slice(0, 5);
+	return youtubeClientPromise;
+}
+
+function sleep(ms) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Tags the creator set on the video. null means the request failed. */
+export async function fetchYouTubeTags(videoId) {
+	const client = await youtubeInnertubeClient();
+	for (let attempt = 0; attempt < 3; attempt++) {
+		if (attempt > 0) await sleep(500 * attempt);
+		const res = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${encodeURIComponent(client.key)}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', 'User-Agent': UA },
+			body: JSON.stringify({
+				context: { client: { clientName: 'WEB', clientVersion: client.version, hl: 'ko', gl: 'KR' } },
+				videoId,
+			}),
+		});
+		if (res.status === 429 || !res.ok) continue;
+		const json = await res.json();
+		if (!json.videoDetails?.videoId) continue;
+		return uniqueTags(json.videoDetails.keywords ?? []);
+	}
+	return null;
+}
+
+export async function readBlogTagIndex(platform) {
+	const feedUrl = platform === 'naver' ? NAVER_RSS : TISTORY_RSS;
+	const res = await fetch(feedUrl, { headers: { 'User-Agent': UA } });
+	if (!res.ok) throw new Error(`RSS fetch failed (${res.status}): ${feedUrl}`);
+	const parsed = xmlParser.parse(await res.text());
+	const index = new Map();
+	for (const item of normalizeRssItems(parsed)) {
+		const link = rssText(item.link?.['@_href'] ?? item.link ?? item.guid);
+		const id =
+			platform === 'naver'
+				? link.match(/\/(\d{5,})(?:\?|#|$)/)?.[1]
+				: link.match(/tistory\.com\/(\d+)/)?.[1];
+		if (!id) continue;
+		index.set(id, blogTagsFromRssItem(item, platform));
+	}
+	return index;
 }
 
 async function writeJson(dir, filename, data) {
@@ -120,6 +184,17 @@ export async function saveIfNew(dir, filename, data, index) {
 	return true;
 }
 
+export async function upsertTags(dir, filename, tags) {
+	const filePath = path.join(dir, filename);
+	const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+	const current = Array.isArray(data.tags) ? data.tags : [];
+	const same = current.length === tags.length && current.every((tag, index) => tag === tags[index]);
+	if (same) return false;
+	data.tags = tags;
+	await fs.writeFile(filePath, `${JSON.stringify(data, null, '\t')}\n`, 'utf8');
+	return true;
+}
+
 async function fetchJson(url) {
 	const res = await fetch(url);
 	if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
@@ -162,20 +237,20 @@ async function syncYouTubeRss() {
 		const link = item.link?.['@_href'] ?? item.link ?? '';
 		const videoId = item['yt:videoId']?.['#text'] ?? item['yt:videoId'] ?? link.match(/v=([^&]+)/)?.[1];
 		const publishedAt = item.published ?? item.pubDate ?? new Date().toISOString();
-		const description = stripHtml(item['media:group']?.['media:description'] ?? item.description ?? '');
-
 		if (!videoId) continue;
 
+		const tags = await fetchYouTubeTags(videoId);
 		const entry = {
 			title: String(title).trim(),
 			url: `https://www.youtube.com/watch?v=${videoId}`,
 			thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
 			publishedAt: new Date(publishedAt).toISOString(),
-			tags: extractTags(String(title), description),
-			category: categorizeVideo(String(title), description),
+			tags: tags ?? [],
 		};
 
-		if (await saveIfNew(VIDEOS_DIR, `yt-${videoId}.json`, entry, index)) added++;
+		const filename = `yt-${videoId}.json`;
+		if (await saveIfNew(VIDEOS_DIR, filename, entry, index)) added++;
+		else if (tags) await upsertTags(VIDEOS_DIR, filename, tags);
 	}
 
 	console.log(`✓ YouTube (RSS fallback): ${added} new, ${items.length - added} already archived`);
@@ -233,7 +308,6 @@ async function syncYouTube() {
 		if (!snippet) continue;
 
 		const title = snippet.title;
-		const description = snippet.description ?? '';
 		const publishedAt = snippet.publishedAt;
 		const thumb =
 			snippet.thumbnails?.maxres?.url ||
@@ -241,16 +315,18 @@ async function syncYouTube() {
 			snippet.thumbnails?.medium?.url ||
 			`https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 
+		const tags = Array.isArray(snippet.tags) ? uniqueTags(snippet.tags) : await fetchYouTubeTags(id);
 		const entry = {
 			title,
 			url: `https://www.youtube.com/watch?v=${id}`,
 			thumbnailUrl: thumb,
 			publishedAt,
-			tags: extractTags(title, description),
-			category: categorizeVideo(title, description),
+			tags: tags ?? [],
 		};
 
-		if (await saveIfNew(VIDEOS_DIR, `yt-${id}.json`, entry, index)) added++;
+		const filename = `yt-${id}.json`;
+		if (await saveIfNew(VIDEOS_DIR, filename, entry, index)) added++;
+		else if (tags) await upsertTags(VIDEOS_DIR, filename, tags);
 	}
 
 	console.log(`✓ YouTube: ${added} new, ${videoIds.length - added} already archived`);
@@ -266,7 +342,7 @@ function normalizeRssItems(parsed) {
 }
 
 async function syncRssFeed(feedUrl, platform) {
-	const res = await fetch(feedUrl);
+	const res = await fetch(feedUrl, { headers: { 'User-Agent': UA } });
 	if (!res.ok) throw new Error(`RSS fetch failed (${res.status}): ${feedUrl}`);
 
 	const xml = await res.text();
@@ -294,7 +370,7 @@ async function syncRssFeed(feedUrl, platform) {
 				title: String(title).trim(),
 				url: String(link).trim(),
 				publishedAt,
-				tags: extractTags(String(title), description),
+				tags: blogTagsFromRssItem(item, platform),
 				platform,
 				...(description ? { summary: description.slice(0, 160) } : {}),
 			},
@@ -313,6 +389,7 @@ async function syncBlogs() {
 	let added = 0;
 	for (const { filename, data } of all) {
 		if (await saveIfNew(BLOG_DIR, filename, data, index)) added++;
+		else await upsertTags(BLOG_DIR, filename, data.tags);
 	}
 
 	console.log(

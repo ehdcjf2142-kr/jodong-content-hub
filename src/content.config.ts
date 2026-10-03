@@ -9,7 +9,6 @@ const videos = defineCollection({
 		thumbnailUrl: z.string().url().optional(),
 		publishedAt: z.coerce.date(),
 		tags: z.array(z.string()).default([]),
-		category: z.enum(['game-analysis', 'mobile-review', 'visual-poem']),
 	}),
 });
 

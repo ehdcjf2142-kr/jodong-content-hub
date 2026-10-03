@@ -8,7 +8,6 @@ export function toSearchIndexRows(items: FeedItem[]): SearchIndexRow[] {
 		url: i.url,
 		tags: i.tags,
 		thumbnailUrl: i.thumbnailUrl,
-		category: i.category,
 		platform: i.platform,
 		summary: i.summary,
 		publishedAt: i.publishedAt.toISOString(),
