@@ -1,0 +1,43 @@
+name: Auto sync content
+
+on:
+  schedule:
+    # GitHub cron is UTC. Every 2 hours at minute 0.
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Sync from YouTube, Naver, and Tistory
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          YOUTUBE_CHANNEL_HANDLE: JodongBroOfficial
+          SYNC_MAX_VIDEOS: 20
+          SYNC_MAX_BLOG: 10
+        run: npm run sync:content
+
+      - name: Commit and push if content changed
+        run: |
+          git add .
+          if git diff --staged --quiet; then
+            echo "No content changes. Sync finished successfully."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: auto-sync latest content [skip ci]"
+          git push
