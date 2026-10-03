@@ -1,5 +1,6 @@
 /**
  * Sync YouTube (Data API) + Tistory/Naver RSS into content JSON files.
+ * Existing archive files are kept. New items are added by URL identity.
  *
  * Env:
  *   YOUTUBE_API_KEY       — YouTube Data API (없으면 RSS fallback)
@@ -16,8 +17,8 @@ import { XMLParser } from 'fast-xml-parser';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
-const VIDEOS_DIR = path.join(ROOT, 'src/content/videos');
-const BLOG_DIR = path.join(ROOT, 'src/content/blog-links');
+export const VIDEOS_DIR = path.join(ROOT, 'src/content/videos');
+export const BLOG_DIR = path.join(ROOT, 'src/content/blog-links');
 
 const YOUTUBE_HANDLE = process.env.YOUTUBE_CHANNEL_HANDLE || 'JodongBroOfficial';
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
@@ -40,7 +41,7 @@ function slugify(input) {
 		.slice(0, 60) || 'item';
 }
 
-function stripHtml(html) {
+export function stripHtml(html) {
 	if (!html) return '';
 	return String(html)
 		.replace(/<[^>]+>/g, ' ')
@@ -48,14 +49,14 @@ function stripHtml(html) {
 		.trim();
 }
 
-function categorizeVideo(title, description = '') {
+export function categorizeVideo(title, description = '') {
 	const text = `${title} ${description}`.toLowerCase();
 	if (/쇼츠|시|poem|낭독|visual/.test(text)) return 'visual-poem';
 	if (/모바일|mobile|찍먹|gacha|리듬|터치/.test(text)) return 'mobile-review';
 	return 'game-analysis';
 }
 
-function extractTags(title, description = '') {
+export function extractTags(title, description = '') {
 	const text = `${title} ${description}`;
 	const tags = new Set();
 	const rules = [
@@ -77,12 +78,46 @@ async function writeJson(dir, filename, data) {
 	await fs.writeFile(path.join(dir, filename), `${JSON.stringify(data, null, '\t')}\n`, 'utf8');
 }
 
-async function clearJsonDir(dir) {
+function canonicalFilename(data) {
+	const url = String(data?.url ?? '');
+	const videoId = url.match(/[?&]v=([\w-]{11})/)?.[1];
+	if (videoId) return `yt-${videoId}.json`;
+
+	if (url.includes('blog.naver.com') || data?.platform === 'naver') {
+		const logNo = url.match(/\/(\d{8,})(?:\?|#|$)/)?.[1];
+		if (logNo) return `naver-${logNo}.json`;
+	}
+
+	const tistoryId = url.match(/tistory\.com\/(\d+)(?:\?|#|$)/)?.[1];
+	if (tistoryId) return `tistory-${tistoryId}.json`;
+	return null;
+}
+
+export async function loadIdentityIndex(dir) {
 	await fs.mkdir(dir, { recursive: true });
-	const files = await fs.readdir(dir);
+	const files = (await fs.readdir(dir)).filter((file) => file.endsWith('.json'));
+	const index = new Set(files);
 	await Promise.all(
-		files.filter((f) => f.endsWith('.json')).map((f) => fs.unlink(path.join(dir, f))),
+		files.map(async (file) => {
+			try {
+				const data = JSON.parse(await fs.readFile(path.join(dir, file), 'utf8'));
+				const canonical = canonicalFilename(data);
+				if (canonical) index.add(canonical);
+			} catch {
+				// A broken file still occupies its name, so it is not rewritten.
+			}
+		}),
 	);
+	return index;
+}
+
+export async function saveIfNew(dir, filename, data, index) {
+	const canonical = canonicalFilename(data);
+	if (index.has(filename) || (canonical && index.has(canonical))) return false;
+	await writeJson(dir, filename, data);
+	index.add(filename);
+	if (canonical) index.add(canonical);
+	return true;
 }
 
 async function fetchJson(url) {
@@ -119,10 +154,9 @@ async function syncYouTubeRss() {
 	const xml = await res.text();
 	const parsed = xmlParser.parse(xml);
 	const items = normalizeRssItems(parsed).slice(0, MAX_VIDEOS);
+	const index = await loadIdentityIndex(VIDEOS_DIR);
 
-	await clearJsonDir(VIDEOS_DIR);
-
-	let count = 0;
+	let added = 0;
 	for (const item of items) {
 		const title = item.title?.['#text'] ?? item.title ?? 'Untitled';
 		const link = item.link?.['@_href'] ?? item.link ?? '';
@@ -141,12 +175,11 @@ async function syncYouTubeRss() {
 			category: categorizeVideo(String(title), description),
 		};
 
-		await writeJson(VIDEOS_DIR, `yt-${videoId}.json`, entry);
-		count++;
+		if (await saveIfNew(VIDEOS_DIR, `yt-${videoId}.json`, entry, index)) added++;
 	}
 
-	console.log(`✓ YouTube (RSS fallback): ${count} videos synced`);
-	return count;
+	console.log(`✓ YouTube (RSS fallback): ${added} new, ${items.length - added} already archived`);
+	return added;
 }
 
 async function syncYouTube() {
@@ -192,9 +225,9 @@ async function syncYouTube() {
 	const videosData = await fetchJson(videosUrl);
 	const detailsById = new Map((videosData.items ?? []).map((v) => [v.id, v.snippet]));
 
-	await clearJsonDir(VIDEOS_DIR);
+	const index = await loadIdentityIndex(VIDEOS_DIR);
 
-	let count = 0;
+	let added = 0;
 	for (const id of videoIds) {
 		const snippet = detailsById.get(id) ?? playlistItems.find((p) => p.snippet?.resourceId?.videoId === id)?.snippet;
 		if (!snippet) continue;
@@ -217,12 +250,11 @@ async function syncYouTube() {
 			category: categorizeVideo(title, description),
 		};
 
-		await writeJson(VIDEOS_DIR, `yt-${id}.json`, entry);
-		count++;
+		if (await saveIfNew(VIDEOS_DIR, `yt-${id}.json`, entry, index)) added++;
 	}
 
-	console.log(`✓ YouTube: ${count} videos synced`);
-	return count;
+	console.log(`✓ YouTube: ${added} new, ${videoIds.length - added} already archived`);
+	return added;
 }
 
 function normalizeRssItems(parsed) {
@@ -277,22 +309,16 @@ async function syncBlogs() {
 	const naver = await syncRssFeed(NAVER_RSS, 'naver');
 	const all = [...tistory, ...naver];
 
-	await clearJsonDir(BLOG_DIR);
-
-	const used = new Set();
+	const index = await loadIdentityIndex(BLOG_DIR);
+	let added = 0;
 	for (const { filename, data } of all) {
-		let name = filename;
-		let i = 2;
-		while (used.has(name)) {
-			name = filename.replace('.json', `-${i}.json`);
-			i++;
-		}
-		used.add(name);
-		await writeJson(BLOG_DIR, name, data);
+		if (await saveIfNew(BLOG_DIR, filename, data, index)) added++;
 	}
 
-	console.log(`✓ Blogs: ${all.length} posts synced (tistory ${tistory.length}, naver ${naver.length})`);
-	return all.length;
+	console.log(
+		`✓ Blogs: ${added} new, ${all.length - added} already archived (tistory ${tistory.length}, naver ${naver.length})`,
+	);
+	return added;
 }
 
 async function main() {
@@ -302,7 +328,11 @@ async function main() {
 	console.log(`Done. YouTube: ${yt}, Blogs: ${blogs}`);
 }
 
-main().catch((err) => {
-	console.error(err);
-	process.exit(1);
-});
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : '';
+const selfPath = fileURLToPath(import.meta.url);
+if (invokedPath.toLowerCase() === selfPath.toLowerCase()) {
+	main().catch((err) => {
+		console.error(err);
+		process.exit(1);
+	});
+}
