@@ -9,11 +9,13 @@ import SkipLink from '../components/layout/SkipLink.astro';
 interface Props {
 	title?: string;
 	description?: string;
+	noindex?: boolean;
 }
 
 const {
 	title = '조동이형 — 기록소',
 	description = '게임으로 인생을 깨닫고 싶은 조동이의 온갖 삽질과 사유의 기록소',
+	noindex = false,
 } = Astro.props;
 ---
 
@@ -23,6 +25,7 @@ const {
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="description" content={description} />
+		{noindex && <meta name="robots" content="noindex, nofollow" />}
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<meta name="generator" content={Astro.generator} />
 		<title>{title}</title>

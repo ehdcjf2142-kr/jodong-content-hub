@@ -1,0 +1,106 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { formatDateTime } from '../../lib/format';
+import { addNote, deleteNote, listNotes, updateNote, type Note } from '../../lib/notes';
+
+export const prerender = false;
+
+let error = '';
+
+if (Astro.request.method === 'POST') {
+	try {
+		const form = await Astro.request.formData();
+		const action = String(form.get('action') ?? '');
+		const id = Number(form.get('id'));
+		const body = String(form.get('body') ?? '').trim();
+		const isPublic = form.get('visibility') === 'public';
+
+		if (action === 'add' || action === 'save') {
+			if (!body) {
+				error = '내용을 입력하세요.';
+			} else if (action === 'add') {
+				await addNote(body, isPublic);
+			} else {
+				await updateNote(id, body, isPublic);
+			}
+		} else if (action === 'delete') {
+			await deleteNote(id);
+		}
+		if (!error) return Astro.redirect('/admin/notes/', 303);
+	} catch (e) {
+		console.error(e);
+		error = '저장에 실패했습니다. 데이터베이스 설정을 확인하세요.';
+	}
+}
+
+let notes: Note[] = [];
+try {
+	notes = await listNotes(true);
+} catch (e) {
+	console.error(e);
+	error ||= '글을 불러오지 못했습니다. 데이터베이스 설정을 확인하세요.';
+}
+
+const input =
+	'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-base text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100';
+---
+
+<BaseLayout title="짧은 글 쓰기 — 조동이형" noindex>
+	<div class="mx-auto max-w-2xl px-4 py-10 sm:px-6">
+		<a href="/admin/" class="text-sm text-zinc-500 hover:underline">← 관리 홈</a>
+		<h1 class="mt-2 text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">짧은 글 쓰기</h1>
+
+		{
+			error && (
+				<p class="mt-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-200">
+					{error}
+				</p>
+			)
+		}
+
+		<form method="post" class="mt-8 space-y-3 rounded-2xl border border-violet-200 bg-violet-50/50 p-5 dark:border-violet-900/50 dark:bg-violet-950/20">
+			<input type="hidden" name="action" value="add" />
+			<textarea name="body" rows="6" required placeholder="지금 떠오르는 생각을 적어보세요" class={input}></textarea>
+			<select name="visibility" class={input}>
+				<option value="private">비공개 (나만 보기)</option>
+				<option value="public">공개</option>
+			</select>
+			<button type="submit" class="w-full rounded-xl bg-violet-600 px-4 py-3 font-semibold text-white hover:bg-violet-700">
+				남기기
+			</button>
+		</form>
+
+		<ul class="mt-10 space-y-4">
+			{
+				notes.map((n) => (
+					<li>
+						<form method="post" class="space-y-3 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900/40">
+							<input type="hidden" name="id" value={n.id} />
+							<p class="text-xs text-zinc-500">{formatDateTime(n.createdAt)}</p>
+							<textarea name="body" rows="4" required class={input}>{n.body}</textarea>
+							<select name="visibility" class={input}>
+								<option value="private" selected={!n.isPublic}>비공개 (나만 보기)</option>
+								<option value="public" selected={n.isPublic}>공개</option>
+							</select>
+							<div class="flex gap-2">
+								<button type="submit" name="action" value="save" class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700">
+									저장
+								</button>
+								<button
+									type="submit"
+									name="action"
+									value="delete"
+									formnovalidate
+									class="ml-auto rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/40"
+									onclick="return confirm('삭제할까요?')"
+								>
+									삭제
+								</button>
+							</div>
+						</form>
+					</li>
+				))
+			}
+		</ul>
+	</div>
+</BaseLayout>

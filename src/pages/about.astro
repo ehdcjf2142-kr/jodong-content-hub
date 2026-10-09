@@ -1,24 +1,16 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import SectionHeading from '../components/home/SectionHeading.astro';
+import { listMilestones, type Milestone } from '../lib/milestones';
 
-const milestones: { year: string; title: string; body: string }[] = [
-	{
-		year: '20XX',
-		title: '패치 제목',
-		body: '이 자리에 전환점이 된 일을 한 줄로 적습니다.',
-	},
-	{
-		year: '20XX',
-		title: '패치 제목',
-		body: '이 자리에 전환점이 된 일을 한 줄로 적습니다.',
-	},
-	{
-		year: '20XX',
-		title: '패치 제목',
-		body: '이 자리에 전환점이 된 일을 한 줄로 적습니다.',
-	},
-];
+export const prerender = false;
+
+let milestones: Milestone[] = [];
+try {
+	milestones = await listMilestones();
+} catch (e) {
+	console.error('마일스톤을 불러오지 못했습니다.', e);
+}
 ---
 
 <BaseLayout
@@ -39,7 +31,7 @@ const milestones: { year: string; title: string; body: string }[] = [
 			</p>
 		</div>
 
-		<section class="mt-16" aria-labelledby="milestones-heading">
+		<section class="mt-16" aria-labelledby="milestones-heading" hidden={milestones.length === 0}>
 			<h2
 				id="milestones-heading"
 				class="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50"
@@ -47,7 +39,7 @@ const milestones: { year: string; title: string; body: string }[] = [
 				인생 패치노트
 			</h2>
 			<p class="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-				Milestones. 연도, 제목, 한 줄만 채우면 됩니다.
+				Milestones.
 			</p>
 			<ol class="mt-8 space-y-0 border-l border-zinc-200 dark:border-zinc-800">
 				{
