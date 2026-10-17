@@ -21,6 +21,10 @@ jobs:
 
       - run: npm ci
 
+      # YOUTUBE_API_KEY (선택, 없으면 RSS fallback):
+      # 1. GitHub repo → Settings → Secrets and variables → Actions
+      # 2. New repository secret. Name = YOUTUBE_API_KEY, Value = YouTube Data API v3 키
+      # 3. 아래 ${{ secrets.YOUTUBE_API_KEY }} 가 그 값을 이 step 의 env 로 주입한다.
       - name: Sync from YouTube + RSS
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}

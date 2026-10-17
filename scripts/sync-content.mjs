@@ -4,6 +4,10 @@
  *
  * Env:
  *   YOUTUBE_API_KEY       — YouTube Data API (없으면 RSS fallback)
+ *     GitHub Actions: Settings → Secrets and variables → Actions 에
+ *     Name=YOUTUBE_API_KEY 시크릿을 만든 뒤, workflow env 에
+ *     YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }} 로 주입한다.
+ *     (.github/workflows/sync-content.yml, auto-sync.yml)
  *   YOUTUBE_CHANNEL_ID    — RSS fallback용 (자동 추출 시도)
  *   YOUTUBE_CHANNEL_HANDLE — default: JodongBroOfficial
  *   SYNC_MAX_VIDEOS       — default: 20
@@ -27,6 +31,9 @@ const MAX_VIDEOS = Number.parseInt(process.env.SYNC_MAX_VIDEOS || '20', 10);
 const MAX_BLOG = Number.parseInt(process.env.SYNC_MAX_BLOG || '10', 10);
 
 const UA = 'Mozilla/5.0 (compatible; jodong-content-hub/1.0)';
+const BROWSER_UA =
+	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const YOUTUBE_RSS_ATTEMPTS = 3;
 export const TISTORY_RSS = 'https://jodongbro.tistory.com/rss';
 export const NAVER_RSS = 'https://rss.blog.naver.com/gamelifeequation.xml';
 
@@ -195,9 +202,25 @@ export async function upsertTags(dir, filename, tags) {
 	return true;
 }
 
+function httpError(message, status) {
+	const err = new Error(message);
+	if (Number.isInteger(status)) err.status = status;
+	return err;
+}
+
+function redactSecrets(value) {
+	return String(value).replace(/([?&]key=)[^&\s]+/gi, '$1***');
+}
+
+function warnSyncFailure(label, err) {
+	const status = Number.isInteger(err?.status) ? `HTTP ${err.status}, ` : '';
+	console.warn(`⚠ ${label} sync failed: ${status}${err?.message ?? err}`);
+	console.warn(`⚠ ${label}: keeping existing saved content and continuing`);
+}
+
 async function fetchJson(url) {
 	const res = await fetch(url);
-	if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+	if (!res.ok) throw httpError(`HTTP ${res.status} for ${redactSecrets(url)}`, res.status);
 	return res.json();
 }
 
@@ -208,7 +231,7 @@ async function resolveYouTubeChannelId() {
 	const res = await fetch(pageUrl, {
 		headers: { 'User-Agent': 'Mozilla/5.0 (compatible; jodong-content-hub/1.0)' },
 	});
-	if (!res.ok) throw new Error(`Cannot load YouTube channel page: ${pageUrl}`);
+	if (!res.ok) throw httpError(`Cannot load YouTube channel page: HTTP ${res.status} ${pageUrl}`, res.status);
 
 	const html = await res.text();
 	const match =
@@ -220,13 +243,65 @@ async function resolveYouTubeChannelId() {
 	return match[1];
 }
 
+function isRetryableStatus(status) {
+	return status === 403 || status === 408 || status === 429 || status >= 500;
+}
+
+async function fetchYouTubeRssXml(feedUrl) {
+	let lastError;
+	for (let attempt = 1; attempt <= YOUTUBE_RSS_ATTEMPTS; attempt++) {
+		try {
+			const res = await fetch(feedUrl, {
+				headers: {
+					'User-Agent': BROWSER_UA,
+					Accept: 'application/xml',
+				},
+			});
+			if (res.ok) return await res.text();
+
+			const snippet = (await res.text()).replace(/\s+/g, ' ').trim().slice(0, 180);
+			lastError = httpError(
+				`YouTube RSS fetch failed: HTTP ${res.status} ${res.statusText}${snippet ? ` — ${snippet}` : ''} (${feedUrl})`,
+				res.status,
+			);
+			if (!isRetryableStatus(res.status)) break;
+		} catch (err) {
+			lastError = err;
+		}
+
+		if (attempt >= YOUTUBE_RSS_ATTEMPTS) break;
+		const delayMs = 1000 * 2 ** (attempt - 1);
+		const status = Number.isInteger(lastError?.status) ? `HTTP ${lastError.status}` : 'network error';
+		console.warn(
+			`⚠ YouTube RSS attempt ${attempt}/${YOUTUBE_RSS_ATTEMPTS} failed (${status}): ${lastError?.message ?? lastError}. Retrying in ${delayMs}ms`,
+		);
+		await sleep(delayMs);
+	}
+	throw lastError;
+}
+
+async function youtubeTagsOrSkip(videoId) {
+	try {
+		return await fetchYouTubeTags(videoId);
+	} catch (err) {
+		console.warn(`⚠ YouTube tags skipped for ${videoId}: ${err?.message ?? err}`);
+		return null;
+	}
+}
+
 async function syncYouTubeRss() {
+	try {
+		return await syncYouTubeRssUnsafe();
+	} catch (err) {
+		warnSyncFailure('YouTube RSS', err);
+		return 0;
+	}
+}
+
+async function syncYouTubeRssUnsafe() {
 	const channelId = await resolveYouTubeChannelId();
 	const feedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
-	const res = await fetch(feedUrl);
-	if (!res.ok) throw new Error(`YouTube RSS fetch failed: ${feedUrl}`);
-
-	const xml = await res.text();
+	const xml = await fetchYouTubeRssXml(feedUrl);
 	const parsed = xmlParser.parse(xml);
 	const items = normalizeRssItems(parsed).slice(0, MAX_VIDEOS);
 	const index = await loadIdentityIndex(VIDEOS_DIR);
@@ -239,7 +314,7 @@ async function syncYouTubeRss() {
 		const publishedAt = item.published ?? item.pubDate ?? new Date().toISOString();
 		if (!videoId) continue;
 
-		const tags = await fetchYouTubeTags(videoId);
+		const tags = await youtubeTagsOrSkip(videoId);
 		const entry = {
 			title: String(title).trim(),
 			url: `https://www.youtube.com/watch?v=${videoId}`,
@@ -263,6 +338,15 @@ async function syncYouTube() {
 		return syncYouTubeRss();
 	}
 
+	try {
+		return await syncYouTubeApi();
+	} catch (err) {
+		warnSyncFailure('YouTube', err);
+		return 0;
+	}
+}
+
+async function syncYouTubeApi() {
 	const channelUrl = new URL('https://www.googleapis.com/youtube/v3/channels');
 	channelUrl.searchParams.set('part', 'contentDetails');
 	channelUrl.searchParams.set('forHandle', YOUTUBE_HANDLE);
@@ -270,7 +354,7 @@ async function syncYouTube() {
 
 	const channelData = await fetchJson(channelUrl);
 	const channel = channelData.items?.[0];
-	if (!channel) throw new Error(`YouTube channel not found for handle: ${YOUTUBE_HANDLE}`);
+	if (!channel) throw httpError(`YouTube channel not found for handle: ${YOUTUBE_HANDLE}`);
 
 	const uploadsPlaylistId = channel.contentDetails.relatedPlaylists.uploads;
 
@@ -315,7 +399,7 @@ async function syncYouTube() {
 			snippet.thumbnails?.medium?.url ||
 			`https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 
-		const tags = Array.isArray(snippet.tags) ? uniqueTags(snippet.tags) : await fetchYouTubeTags(id);
+		const tags = Array.isArray(snippet.tags) ? uniqueTags(snippet.tags) : await youtubeTagsOrSkip(id);
 		const entry = {
 			title,
 			url: `https://www.youtube.com/watch?v=${id}`,
@@ -343,7 +427,7 @@ function normalizeRssItems(parsed) {
 
 async function syncRssFeed(feedUrl, platform) {
 	const res = await fetch(feedUrl, { headers: { 'User-Agent': UA } });
-	if (!res.ok) throw new Error(`RSS fetch failed (${res.status}): ${feedUrl}`);
+	if (!res.ok) throw httpError(`RSS fetch failed: HTTP ${res.status} ${res.statusText} (${feedUrl})`, res.status);
 
 	const xml = await res.text();
 	const parsed = xmlParser.parse(xml);
@@ -380,9 +464,18 @@ async function syncRssFeed(feedUrl, platform) {
 	return entries;
 }
 
+async function syncPlatformFeed(label, feedUrl, platform) {
+	try {
+		return await syncRssFeed(feedUrl, platform);
+	} catch (err) {
+		warnSyncFailure(label, err);
+		return [];
+	}
+}
+
 async function syncBlogs() {
-	const tistory = await syncRssFeed(TISTORY_RSS, 'tistory');
-	const naver = await syncRssFeed(NAVER_RSS, 'naver');
+	const tistory = await syncPlatformFeed('Tistory', TISTORY_RSS, 'tistory');
+	const naver = await syncPlatformFeed('Naver', NAVER_RSS, 'naver');
 	const all = [...tistory, ...naver];
 
 	const index = await loadIdentityIndex(BLOG_DIR);
