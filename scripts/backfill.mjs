@@ -6,7 +6,8 @@
 import { XMLParser } from 'fast-xml-parser';
 import * as sync from './sync-content.mjs';
 
-const { BLOG_DIR, VIDEOS_DIR, loadIdentityIndex, saveIfNew, stripHtml } = sync;
+const { BLOG_DIR, VIDEOS_DIR, isPlayablePlayerVideo, loadIdentityIndex, pickBroadcastVideos, saveIfNew, stripHtml } =
+	sync;
 
 function uniqueTags(values) {
 	if (typeof sync.uniqueTags === 'function') return sync.uniqueTags(values);
@@ -341,13 +342,21 @@ async function fetchPlayer(key, version, videoId) {
 		if (res.status === 429) continue;
 		if (!res.ok) continue;
 		const json = await res.json();
+		const details = json.videoDetails;
+		const durationSeconds = Number(details?.lengthSeconds);
+		const playable = isPlayablePlayerVideo(details, json.playabilityStatus?.status);
+		if (details?.videoId && !playable) {
+			return { playable: false, title: details.title ?? '', durationSeconds: Number.isFinite(durationSeconds) ? durationSeconds : 0 };
+		}
 		const micro = json.microformat?.playerMicroformatRenderer;
 		if (micro?.publishDate && micro?.title?.simpleText) {
 			return {
+				playable,
 				title: micro.title.simpleText,
 				description: micro.description?.simpleText ?? '',
 				publishDate: micro.publishDate,
-				tags: uniqueTags(json.videoDetails?.keywords ?? []),
+				durationSeconds: Number.isFinite(durationSeconds) ? durationSeconds : 0,
+				tags: uniqueTags(details?.keywords ?? []),
 			};
 		}
 	}
@@ -393,9 +402,22 @@ async function backfillYouTube(index) {
 	const ids = [...videos.keys()].filter((id) => !index.has(`yt-${id}.json`));
 	console.log(`YouTube list: ${videos.size} videos. Fetching publish dates for ${ids.length} new…`);
 	const failed = [];
-	let added = 0;
+	const pending = [];
 	let done = 0;
 	let cursor = 0;
+	let skipped = 0;
+
+	function takePlayer(id, micro) {
+		if (!micro) {
+			failed.push(id);
+			return;
+		}
+		if (!micro.playable) {
+			skipped++;
+			return;
+		}
+		pending.push({ id, micro });
+	}
 
 	async function worker() {
 		while (cursor < ids.length) {
@@ -403,11 +425,7 @@ async function backfillYouTube(index) {
 			await sleep(120);
 			const micro = await fetchPlayer(key, version, id);
 			done++;
-			if (!micro) {
-				failed.push(id);
-				continue;
-			}
-			if (await saveIfNew(VIDEOS_DIR, `yt-${id}.json`, videoEntry(id, micro), index)) added++;
+			takePlayer(id, micro);
 			if (done % 25 === 0 || done === ids.length) console.log(`  dates ${done}/${ids.length}`);
 		}
 	}
@@ -417,21 +435,38 @@ async function backfillYouTube(index) {
 	if (failed.length) {
 		console.warn(`Retrying ${failed.length} videos with missing dates…`);
 		const stillFailed = [];
-		for (const id of failed) {
+		for (const id of failed.splice(0)) {
 			await sleep(500);
 			const micro = await fetchPlayer(key, version, id);
 			if (!micro) {
 				stillFailed.push(id);
 				continue;
 			}
-			if (await saveIfNew(VIDEOS_DIR, `yt-${id}.json`, videoEntry(id, micro), index)) added++;
+			if (!micro.playable) {
+				skipped++;
+				continue;
+			}
+			pending.push({ id, micro });
 		}
 		if (stillFailed.length) {
 			throw new Error(`Missing publish dates for ${stillFailed.length} videos: ${stillFailed.join(', ')}`);
 		}
 	}
 
-	console.log(`✓ YouTube: ${added} new, ${videos.size} listed`);
+	const entries = pending.map(({ id, micro }) => ({
+		id,
+		title: micro.title,
+		publishedAt: new Date(micro.publishDate).toISOString(),
+		durationSeconds: micro.durationSeconds,
+		entry: videoEntry(id, micro),
+	}));
+	const { keep, drop } = pickBroadcastVideos(entries);
+	let added = 0;
+	for (const video of keep) {
+		if (await saveIfNew(VIDEOS_DIR, `yt-${video.id}.json`, video.entry, index)) added++;
+	}
+
+	console.log(`✓ YouTube: ${added} new, ${videos.size} listed, ${skipped} unplayable, ${drop.length} shorter duplicate`);
 	return { added, listed: videos.size };
 }
 

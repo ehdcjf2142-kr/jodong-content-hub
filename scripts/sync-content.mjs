@@ -29,6 +29,8 @@ const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 const YOUTUBE_CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID;
 const MAX_VIDEOS = Number.parseInt(process.env.SYNC_MAX_VIDEOS || '20', 10);
 const MAX_BLOG = Number.parseInt(process.env.SYNC_MAX_BLOG || '10', 10);
+/** Same-title live restarts from one broadcast setup, not a later scheduled stream. */
+const DUPLICATE_LIVE_WINDOW_MS = 36 * 60 * 60 * 1000;
 
 const UA = 'Mozilla/5.0 (compatible; jodong-content-hub/1.0)';
 const BROWSER_UA =
@@ -105,8 +107,117 @@ function sleep(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Tags the creator set on the video. null means the request failed. */
-export async function fetchYouTubeTags(videoId) {
+/** YouTube Data API duration, e.g. PT1H2M3S. null when missing or not a time. */
+export function parseIso8601Duration(value) {
+	if (typeof value !== 'string') return null;
+	const match = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(value);
+	if (!match || (match[1] == null && match[2] == null && match[3] == null)) return null;
+	return Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0);
+}
+
+export function normalizeVideoTitle(title) {
+	return String(title ?? '')
+		.normalize('NFKC')
+		.toLowerCase()
+		.replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+const TITLE_RESTART_SUFFIX = /^(?:\d{1,2}|다시|재시작|재방|재업로드|라이브|live)+$/i;
+
+/** Same live title, ignoring spacing/punctuation and a short restart suffix. */
+export function videoTitlesSimilar(a, b) {
+	const left = normalizeVideoTitle(a);
+	const right = normalizeVideoTitle(b);
+	if (!left || !right) return false;
+	if (left === right) return true;
+	const longer = left.length >= right.length ? left : right;
+	const shorter = left.length >= right.length ? right : left;
+	if (shorter.length < 8 || !longer.startsWith(shorter)) return false;
+	const extra = longer.slice(shorter.length);
+	return extra.length <= 6 && TITLE_RESTART_SUFFIX.test(extra);
+}
+
+function publishedTime(value) {
+	const time = new Date(value).getTime();
+	return Number.isFinite(time) ? time : null;
+}
+
+/**
+ * Among playable videos, collapse same-title lives created back-to-back
+ * and keep the longest recording.
+ */
+export function pickBroadcastVideos(videos, windowMs = DUPLICATE_LIVE_WINDOW_MS) {
+	const sorted = [...videos].sort((a, b) => {
+		const delta = (publishedTime(a.publishedAt) ?? 0) - (publishedTime(b.publishedAt) ?? 0);
+		if (delta !== 0) return delta;
+		return (b.durationSeconds ?? 0) - (a.durationSeconds ?? 0);
+	});
+
+	const clusters = [];
+	for (const video of sorted) {
+		const publishedAt = publishedTime(video.publishedAt);
+		let joined = false;
+		if (publishedAt != null) {
+			for (let i = clusters.length - 1; i >= 0; i--) {
+				const cluster = clusters[i];
+				const latestAt = publishedTime(cluster[cluster.length - 1].publishedAt);
+				const firstAt = publishedTime(cluster[0].publishedAt);
+				if (latestAt == null || firstAt == null) continue;
+				if (
+					publishedAt >= latestAt &&
+					publishedAt - latestAt <= windowMs &&
+					publishedAt - firstAt <= windowMs &&
+					videoTitlesSimilar(cluster[cluster.length - 1].title, video.title)
+				) {
+					cluster.push(video);
+					joined = true;
+					break;
+				}
+			}
+		}
+		if (!joined) clusters.push([video]);
+	}
+
+	const keep = [];
+	const drop = [];
+	for (const cluster of clusters) {
+		let best = cluster[0];
+		for (const video of cluster.slice(1)) {
+			const bestDuration = best.durationSeconds ?? 0;
+			const duration = video.durationSeconds ?? 0;
+			const later = (publishedTime(video.publishedAt) ?? 0) > (publishedTime(best.publishedAt) ?? 0);
+			if (duration > bestDuration || (duration === bestDuration && later)) {
+				drop.push(best);
+				best = video;
+			} else {
+				drop.push(video);
+			}
+		}
+		keep.push(best);
+	}
+	return { keep, drop };
+}
+
+/** Data API video: finished, public, and long enough to play. */
+export function isCollectableYouTubeApiVideo(video) {
+	if (video?.status?.uploadStatus !== 'processed') return false;
+	if (video?.status?.privacyStatus !== 'public') return false;
+	const live = video?.snippet?.liveBroadcastContent;
+	if (live === 'live' || live === 'upcoming') return false;
+	const durationSeconds = parseIso8601Duration(video?.contentDetails?.duration);
+	return durationSeconds != null && durationSeconds > 0;
+}
+
+/** Innertube player payload: playable VOD with a non-zero length. */
+export function isPlayablePlayerVideo(videoDetails, playabilityStatus) {
+	const durationSeconds = Number(videoDetails?.lengthSeconds);
+	if (playabilityStatus !== 'OK') return false;
+	if (videoDetails?.isLive === true) return false;
+	return Number.isFinite(durationSeconds) && durationSeconds > 0;
+}
+
+/** Player details. null means the request failed. */
+export async function fetchYouTubePlayer(videoId) {
 	const client = await youtubeInnertubeClient();
 	for (let attempt = 0; attempt < 3; attempt++) {
 		if (attempt > 0) await sleep(500 * attempt);
@@ -120,10 +231,27 @@ export async function fetchYouTubeTags(videoId) {
 		});
 		if (res.status === 429 || !res.ok) continue;
 		const json = await res.json();
-		if (!json.videoDetails?.videoId) continue;
-		return uniqueTags(json.videoDetails.keywords ?? []);
+		const status = json.playabilityStatus?.status;
+		if (!json.videoDetails?.videoId) {
+			if (status === 'LIVE_STREAM_OFFLINE' || status === 'UNPLAYABLE') {
+				return { tags: [], durationSeconds: null, playable: false };
+			}
+			continue;
+		}
+		const durationSeconds = Number(json.videoDetails.lengthSeconds);
+		return {
+			tags: uniqueTags(json.videoDetails.keywords ?? []),
+			durationSeconds: Number.isFinite(durationSeconds) ? durationSeconds : null,
+			playable: isPlayablePlayerVideo(json.videoDetails, json.playabilityStatus?.status),
+		};
 	}
 	return null;
+}
+
+/** Tags the creator set on the video. null means the request failed. */
+export async function fetchYouTubeTags(videoId) {
+	const player = await fetchYouTubePlayer(videoId);
+	return player ? player.tags : null;
 }
 
 export async function readBlogTagIndex(platform) {
@@ -200,6 +328,37 @@ export async function upsertTags(dir, filename, tags) {
 	data.tags = tags;
 	await fs.writeFile(filePath, `${JSON.stringify(data, null, '\t')}\n`, 'utf8');
 	return true;
+}
+
+async function discardSavedVideo(videoId, index) {
+	const filename = `yt-${videoId}.json`;
+	try {
+		await fs.unlink(path.join(VIDEOS_DIR, filename));
+	} catch (err) {
+		if (err?.code === 'ENOENT') return false;
+		throw err;
+	}
+	index?.delete(filename);
+	return true;
+}
+
+async function archiveYouTubeEntries(entries, index) {
+	const { keep, drop } = pickBroadcastVideos(entries);
+	let removed = 0;
+	for (const video of drop) {
+		if (await discardSavedVideo(video.id, index)) {
+			removed++;
+			console.log(`✗ Removed shorter duplicate yt-${video.id}.json (${video.title})`);
+		}
+	}
+
+	let added = 0;
+	for (const video of keep) {
+		const filename = `yt-${video.id}.json`;
+		if (await saveIfNew(VIDEOS_DIR, filename, video.entry, index)) added++;
+		else if (video.tags) await upsertTags(VIDEOS_DIR, filename, video.entry.tags);
+	}
+	return { added, kept: keep.length, dropped: drop.length, removed };
 }
 
 function httpError(message, status) {
@@ -306,30 +465,53 @@ async function syncYouTubeRssUnsafe() {
 	const items = normalizeRssItems(parsed).slice(0, MAX_VIDEOS);
 	const index = await loadIdentityIndex(VIDEOS_DIR);
 
-	let added = 0;
+	const entries = [];
+	let skipped = 0;
 	for (const item of items) {
-		const title = item.title?.['#text'] ?? item.title ?? 'Untitled';
+		const title = String(item.title?.['#text'] ?? item.title ?? 'Untitled').trim();
 		const link = item.link?.['@_href'] ?? item.link ?? '';
 		const videoId = item['yt:videoId']?.['#text'] ?? item['yt:videoId'] ?? link.match(/v=([^&]+)/)?.[1];
 		const publishedAt = item.published ?? item.pubDate ?? new Date().toISOString();
 		if (!videoId) continue;
 
-		const tags = await youtubeTagsOrSkip(videoId);
-		const entry = {
-			title: String(title).trim(),
-			url: `https://www.youtube.com/watch?v=${videoId}`,
-			thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-			publishedAt: new Date(publishedAt).toISOString(),
-			tags: tags ?? [],
-		};
+		const player = await fetchYouTubePlayer(videoId).catch((err) => {
+			console.warn(`⚠ YouTube player skipped for ${videoId}: ${err?.message ?? err}`);
+			return null;
+		});
+		if (!player) {
+			console.warn(`⚠ YouTube duration unknown for ${videoId}; left existing data unchanged`);
+			continue;
+		}
+		if (!player.playable) {
+			skipped++;
+			if (await discardSavedVideo(videoId, index)) {
+				console.log(`✗ Removed unplayable video yt-${videoId}.json`);
+			}
+			continue;
+		}
 
-		const filename = `yt-${videoId}.json`;
-		if (await saveIfNew(VIDEOS_DIR, filename, entry, index)) added++;
-		else if (tags) await upsertTags(VIDEOS_DIR, filename, tags);
+		const published = new Date(publishedAt).toISOString();
+		entries.push({
+			id: videoId,
+			title,
+			publishedAt: published,
+			durationSeconds: player.durationSeconds,
+			tags: player.tags,
+			entry: {
+				title,
+				url: `https://www.youtube.com/watch?v=${videoId}`,
+				thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+				publishedAt: published,
+				tags: player.tags ?? [],
+			},
+		});
 	}
 
-	console.log(`✓ YouTube (RSS fallback): ${added} new, ${items.length - added} already archived`);
-	return added;
+	const archived = await archiveYouTubeEntries(entries, index);
+	console.log(
+		`✓ YouTube (RSS fallback): ${archived.added} new, ${archived.kept - archived.added} already archived, ${skipped} unplayable, ${archived.dropped} shorter duplicate`,
+	);
+	return archived.added;
 }
 
 async function syncYouTube() {
@@ -377,20 +559,29 @@ async function syncYouTubeApi() {
 	}
 
 	const videosUrl = new URL('https://www.googleapis.com/youtube/v3/videos');
-	videosUrl.searchParams.set('part', 'snippet');
+	videosUrl.searchParams.set('part', 'snippet,contentDetails,status');
 	videosUrl.searchParams.set('id', videoIds.join(','));
 	videosUrl.searchParams.set('key', YOUTUBE_API_KEY);
 
 	const videosData = await fetchJson(videosUrl);
-	const detailsById = new Map((videosData.items ?? []).map((v) => [v.id, v.snippet]));
+	const detailsById = new Map((videosData.items ?? []).map((video) => [video.id, video]));
 
 	const index = await loadIdentityIndex(VIDEOS_DIR);
 
-	let added = 0;
+	const entries = [];
+	let skipped = 0;
 	for (const id of videoIds) {
-		const snippet = detailsById.get(id) ?? playlistItems.find((p) => p.snippet?.resourceId?.videoId === id)?.snippet;
-		if (!snippet) continue;
+		const video = detailsById.get(id);
+		if (!video) continue;
+		if (!isCollectableYouTubeApiVideo(video)) {
+			skipped++;
+			if (await discardSavedVideo(id, index)) {
+				console.log(`✗ Removed unplayable video yt-${id}.json`);
+			}
+			continue;
+		}
 
+		const snippet = video.snippet ?? {};
 		const title = snippet.title;
 		const publishedAt = snippet.publishedAt;
 		const thumb =
@@ -400,21 +591,27 @@ async function syncYouTubeApi() {
 			`https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 
 		const tags = Array.isArray(snippet.tags) ? uniqueTags(snippet.tags) : await youtubeTagsOrSkip(id);
-		const entry = {
+		entries.push({
+			id,
 			title,
-			url: `https://www.youtube.com/watch?v=${id}`,
-			thumbnailUrl: thumb,
 			publishedAt,
-			tags: tags ?? [],
-		};
-
-		const filename = `yt-${id}.json`;
-		if (await saveIfNew(VIDEOS_DIR, filename, entry, index)) added++;
-		else if (tags) await upsertTags(VIDEOS_DIR, filename, tags);
+			durationSeconds: parseIso8601Duration(video.contentDetails?.duration),
+			tags,
+			entry: {
+				title,
+				url: `https://www.youtube.com/watch?v=${id}`,
+				thumbnailUrl: thumb,
+				publishedAt,
+				tags: tags ?? [],
+			},
+		});
 	}
 
-	console.log(`✓ YouTube: ${added} new, ${videoIds.length - added} already archived`);
-	return added;
+	const archived = await archiveYouTubeEntries(entries, index);
+	console.log(
+		`✓ YouTube: ${archived.added} new, ${archived.kept - archived.added} already archived, ${skipped} unplayable, ${archived.dropped} shorter duplicate`,
+	);
+	return archived.added;
 }
 
 function normalizeRssItems(parsed) {
